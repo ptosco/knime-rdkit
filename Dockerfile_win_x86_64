@@ -1,0 +1,198 @@
+
+# To build an image with this Dockerfile:
+# docker build -t rdkit-knime-win -f Dockerfile_win_x86_64 --network=host $@ .
+
+# To run bash in the built image mounting a local dir inside the container:
+# mkdir -p ../knime_dlls && docker run -u root --network=host --mount type=bind,source="$(pwd)/.."/knime_dlls,target=/knime_dlls -it rdkit-knime-win:latest bash
+
+FROM fedora:36 AS GCC_TOOL_CHAIN
+
+USER root
+
+ARG RDKIT_RELEASE=2022_09_1
+ARG BUILD_CONCURRENCY=6
+
+RUN dnf update -y
+RUN dnf install -y patch bzip2 ca-certificates openssl openssl-devel java-1.8.0-openjdk-devel \
+    mono-devel mingw64-gcc mingw64-gcc-c++ mingw64-runtime make gcc gcc-c++ mingw64-winpthreads-static
+
+RUN groupadd -g 500 docker && \
+    useradd -u 500 -s /bin/bash -g docker docker && \
+    mkdir /src /work /image /deps && \
+    chown -R docker:docker /src /work /image /deps
+RUN mkdir -p /home/docker && chown docker:docker /home/docker
+USER docker
+RUN mkdir -p /work/boost /work/cmake /work/eigen /work/zlib /work/bzip2 /work/freetype /work/swig /work/cairo
+
+WORKDIR /work/zlib
+RUN curl -L -O https://zlib.net/zlib-1.2.13.tar.gz
+RUN tar xzf zlib-1.2.13.tar.gz
+WORKDIR /work/zlib/zlib-1.2.13
+RUN AR="x86_64-w64-mingw32-ar" CC="x86_64-w64-mingw32-gcc -fPIC" ./configure --static --64 --prefix=/deps
+RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
+
+WORKDIR /work/bzip2
+RUN curl -L -O https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+RUN tar xzf bzip2-1.0.8.tar.gz
+WORKDIR /work/bzip2/bzip2-1.0.8
+RUN make AR="x86_64-w64-mingw32-ar" CC="x86_64-w64-mingw32-gcc -fPIC" PREFIX=/deps -j${BUILD_CONCURRENCY} libbz2.a
+RUN cp bzlib.h /deps/include && cp libbz2.a /deps/lib
+
+WORKDIR /work/boost
+RUN curl -L -O https://boostorg.jfrog.io/artifactory/main/release/1.80.0/source/boost_1_80_0.tar.bz2
+RUN tar xjf boost_1_80_0.tar.bz2
+WORKDIR /work/boost/boost_1_80_0
+RUN echo 'using gcc : mingw : x86_64-w64-mingw32-g++ ;' > user-config.jam
+RUN ./bootstrap.sh --with-toolset=gcc \
+    --with-libraries=serialization,iostreams,regex,system --without-icu --prefix=/deps
+RUN ./b2 --user-config=./user-config.jam toolset=gcc-mingw \
+        target-os=windows address-model=64 architecture=x86 \
+        cflags=-fPIC cxxflags=-fPIC --prefix=/work/boost/install variant=release link=static \
+        --with-serialization --with-iostreams --with-regex --with-system \
+        -sBZIP2_INCLUDE=/deps/include -sBZIP2_LIBPATH=/deps/lib -sZLIB_INCLUDE=/deps/include -sZLIB_LIBPATH=/deps/lib
+
+WORKDIR /work/cmake
+RUN curl -L -O https://github.com/Kitware/CMake/releases/download/v3.24.2/cmake-3.24.2.tar.gz
+RUN tar xzf cmake-3.24.2.tar.gz
+WORKDIR /work/cmake/cmake-3.24.2
+RUN ./bootstrap --prefix=/deps --parallel=16
+RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
+
+WORKDIR /work/eigen
+RUN curl -L -o eigen-3.4.0.tar.bz2 https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2
+RUN tar xjf eigen-3.4.0.tar.bz2
+WORKDIR /work/eigen/eigen-3.4.0
+RUN mkdir build
+WORKDIR /work/eigen/eigen-3.4.0/build
+RUN /deps/bin/cmake -DCMAKE_INSTALL_PREFIX=/deps ..
+RUN make -j${BUILD_CONCURRENCY} install
+
+RUN mkdir -p /work/freetype
+WORKDIR /work/freetype
+RUN curl -L -O https://download.savannah.gnu.org/releases/freetype/freetype-2.12.1.tar.gz
+RUN tar xzf freetype-2.12.1.tar.gz
+WORKDIR /work/freetype/freetype-2.12.1
+RUN CC="x86_64-w64-mingw32-gcc -fPIC" CXX="x86_64-w64-mingw32-g++ -fPIC" AR="x86_64-w64-mingw32-ar" \
+     ./configure --host=x86_64-w64-mingw32 --build=x86_64-pc-linux-gnu \
+     --with-zlib=yes ZLIB_CFLAGS="-I/deps/include" ZLIB_LIBS="-L/deps/lib -lz" \
+     --enable-static=yes --enable-shared=no --prefix=/deps
+RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
+
+RUN mkdir -p /work/swig
+WORKDIR /work/swig
+RUN rm -f swig-3.0.12.tar.gz
+# Occasionally files downloaded from SourceForge are corrupted, so we try up to 5 times
+RUN for i in `seq 1 5`; do \
+        curl -L -o swig-3.0.12.tar.gz https://sourceforge.net/projects/swig/files/swig/swig-3.0.12/swig-3.0.12.tar.gz/download && \
+        [ `md5sum swig-3.0.12.tar.gz | awk '{print($1 == "82133dfa7bba75ff9ad98a7046be687c")}'` != 0 ] && touch swig_md5_ok && break; \
+    done
+RUN test -e swig_md5_ok || ( >&2 echo "Failed to download SWIG" && exit 1 )
+RUN tar xzf swig-3.0.12.tar.gz
+WORKDIR /work/swig/swig-3.0.12
+RUN ./configure --prefix=/deps
+RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
+
+WORKDIR /work/cairo
+RUN for i in `seq 1 5`; do \
+        curl -L -O https://download.sourceforge.net/libpng/libpng-1.6.38.tar.gz && \
+        [ `md5sum libpng-1.6.38.tar.gz | awk '{print($1 == "151d579116e601e393e780b7f46b2ff0")}'` != 0 ] && touch libpng_md5_ok && break; \
+    done
+RUN test -e libpng_md5_ok || ( >&2 echo "Failed to download libpng" && exit 1 )
+RUN tar xzf libpng-1.6.38.tar.gz
+WORKDIR /work/cairo/libpng-1.6.38
+RUN CC="x86_64-w64-mingw32-gcc -fPIC -I/deps/include" \
+    LDFLAGS="-L/deps/lib" AR="x86_64-w64-mingw32-ar" \
+    ./configure --host=x86_64-w64-mingw32 --build=x86_64-pc-linux-gnu \
+    --enable-shared=no --enable-static=yes --prefix=/deps
+RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
+
+WORKDIR /work/cairo
+RUN curl -L -O https://www.cairographics.org/releases/pixman-0.42.0.tar.gz
+RUN tar xzf pixman-0.42.0.tar.gz
+WORKDIR /work/cairo/pixman-0.42.0
+RUN CC="x86_64-w64-mingw32-gcc -fPIC -I/deps/include" \
+    AR="x86_64-w64-mingw32-ar" LDFLAGS="-L/deps/lib" \
+    ./configure --host=x86_64-w64-mingw32 --build=x86_64-pc-linux-gnu \
+    --enable-shared=no --enable-static=yes --prefix=/deps
+RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
+
+WORKDIR /work/cairo
+RUN curl -L -O https://www.cairographics.org/releases/cairo-1.16.0.tar.xz
+RUN tar xJf cairo-1.16.0.tar.xz
+WORKDIR /work/cairo/cairo-1.16.0
+RUN CC="x86_64-w64-mingw32-gcc -fPIC -I/deps/include" AR="x86_64-w64-mingw32-ar" \
+    PKG_CONFIG_PATH=/deps/lib/pkgconfig LDFLAGS="-L/deps/lib -Bstatic -lssp -Bdynamic" \
+    ./configure --host=x86_64-w64-mingw32 --build=x86_64-pc-linux-gnu \
+    --enable-shared=no --enable-static=yes --prefix=/deps
+RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
+
+WORKDIR /src
+RUN curl -L -O https://github.com/rdkit/rdkit/archive/refs/tags/Release_${RDKIT_RELEASE}.tar.gz
+RUN tar xzf Release_${RDKIT_RELEASE}.tar.gz
+WORKDIR /src/rdkit-Release_${RDKIT_RELEASE}
+COPY --chown=docker:docker win-x64.cmake msvcr120.dll /src/rdkit-Release_${RDKIT_RELEASE}/
+RUN sed -i 's|#if _MSC_VER|#ifdef _WIN32|' Code/GraphMol/catch_chirality.cpp
+RUN sed -i 's|Windows\.h|windows.h|' Code/GraphMol/MMPA/MMPA_UnitTest.cpp
+RUN sed -i -e 's|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Cairo::Cairo\)|\1target_include_directories(MolDraw2D PUBLIC /deps/include/cairo)\n\1\2 /deps/lib/libcairo.a /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a /deps/lib/libpixman-1.a /deps/lib/libpng16.a|' \
+    -e 's|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Freetype::Freetype\)|\1target_include_directories(MolDraw2D PUBLIC /deps/include/freetype2)\n\1\2 /deps/lib/libfreetype.a /deps/lib/libz.a|' \
+    Code/GraphMol/MolDraw2D/CMakeLists.txt
+RUN sed -i -e 's|if(WIN32)|if(FALSE)|' \
+    -e 's|\(SWIG_LINK_LIBRARIES *( *\)\(GraphMolWrap *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ \3 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a /deps/lib/libpixman-1.a /deps/lib/libpng16.a|' \
+    Code/JavaWrappers/gmwrapper/CMakeLists.txt
+RUN sed -i 's|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ \3 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a /deps/lib/libpixman-1.a /deps/lib/libpng16.a|' \
+    Code/JavaWrappers/csharp_wrapper/CMakeLists.txt
+# Patch for Avalon 2.0.3
+RUN sed -i -e 's|set(AVALON_VERSION "2\.0\.2")|set(AVALON_VERSION "2.0.3")|' \
+    -e 's|set(AVALONTOOLS_MD5SUM "fc188383a8896802e948c977b73dbe71")|set(AVALONTOOLS_MD5SUM "89e083c3c021baec77a2b85a641c86dd")|' \
+    External/AvalonTools/CMakeLists.txt
+# Begin patch for AValon 2.0.3 on Windows
+COPY --chown=docker:docker avalon203_win32_patch.diff /src/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
+WORKDIR /src/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
+RUN curl -L -O https://github.com/rohdebe1/ava-formake/archive/refs/tags/AvalonToolkit_2.0.3.tar.gz
+RUN tar xzf AvalonToolkit_2.0.3.tar.gz
+RUN patch -p0 < avalon203_win32_patch.diff
+WORKDIR /src/rdkit-Release_${RDKIT_RELEASE}
+# End patch for AValon 2.0.3 on Windows
+RUN mkdir build
+WORKDIR /src/rdkit-Release_${RDKIT_RELEASE}/build
+RUN export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk && /deps/bin/cmake \
+    -D RDK_BUILD_INCHI_SUPPORT=ON \
+    -D RDK_BUILD_AVALON_SUPPORT=ON \
+    -D RDK_BUILD_PYTHON_WRAPPERS=OFF \
+    -D RDK_BUILD_FREESASA_SUPPORT=ON \
+    -D RDK_BUILD_MOLINTERCHANGE_SUPPORT=ON \
+    -D RDK_BUILD_COORDGEN_SUPPORT=ON \
+    -D RDK_BUILD_CAIRO_SUPPORT=ON \
+    -D RDK_INSTALL_INTREE=OFF \
+    -D RDK_BUILD_SWIG_WRAPPERS=ON \
+    -D RDK_BUILD_SWIG_JAVA_WRAPPER=ON \
+    -D RDK_BUILD_SWIG_CSHARP_WRAPPER=ON \
+    -D RDK_BUILD_THREADSAFE_SSS=ON \
+    -D RDK_USE_BOOST_SERIALIZATION=ON \
+    -D RDK_BUILD_CPP_TESTS=ON \
+    -D RDK_BUILD_PGSQL=OFF \
+    -D Boost_INCLUDE_DIR=/work/boost/boost_1_80_0 \
+    -D Boost_LIBRARY_DIR=/work/boost/boost_1_80_0/stage/lib \
+    -D Boost_NO_SYSTEM_PATHS=ON \
+    -D Boost_NO_BOOST_CMAKE=ON \
+    -D CMAKE_BUILD_TYPE=Release \
+    -D EIGEN3_INCLUDE_DIR=/deps/include/eigen3 \
+    -D ZLIB_LIBRARY=/deps/lib/libz.a \
+    -D ZLIB_INCLUDE_DIR=/deps/include \
+    -D SWIG_EXECUTABLE=/deps/bin/swig \
+    -D SWIG_DIR=/deps/share/swig/3.0.12 \
+    -D FREETYPE_LIBRARY=/deps/lib/libfreetype.a \
+    -D FREETYPE_INCLUDE_DIRS=/deps/include/freetype2 \
+    -D CAIRO_INCLUDE_DIR=/deps/include/cairo \
+    -D CAIRO_LIBRARY_DIR=/deps/lib \
+    -D MSVC_RUNTIME_DLL=$PWD/../msvcr120.dll \
+    -D CMAKE_INSTALL_PREFIX=/image \
+    -D CMAKE_TOOLCHAIN_FILE=$PWD/../win-x64.cmake \
+    -D JAVA_AWT_LIBRARY="${JAVA_HOME}/lib/amd64/libjawt.so" \
+    -D JAVA_JVM_LIBRARY="${JAVA_HOME}/jre/lib/amd64/server/libjvm.so" \
+    -D JAVA_INCLUDE_PATH="${JAVA_HOME}/include" \
+    -D JAVA_INCLUDE_PATH2="${JAVA_HOME}/include/linux" \
+    -D JAVA_AWT_INCLUDE_PATH="${JAVA_HOME}/include" \
+    -D Boost_USE_STATIC_LIBS=ON \
+    ..
+RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
