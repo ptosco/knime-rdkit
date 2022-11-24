@@ -603,13 +603,15 @@
           -e "s|\(SWIG_LINK_LIBRARIES *( *\)\(GraphMolWrap *\)\(\${RDKit_Wrapper_Libs}\)|\1\2\3 {{ DEPS }}/lib/libz.a {{ DEPS }}/lib/libbz2.a {{ DEPS }}/lib/libpixman-1.a {{ DEPS }}/lib/libpng16.a \"-framework CoreFoundation\" \"-framework CoreGraphics\"|" \
           Code/JavaWrappers/gmwrapper/CMakeLists.txt && \
         sed -i ".orig" "s|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2\3 {{ DEPS }}/lib/libz.a {{ DEPS }}/lib/libbz2.a {{ DEPS }}/lib/libpixman-1.a {{ DEPS }}/lib/libpng16.a \"-framework CoreFoundation\" \"-framework CoreGraphics\"|" \
-          Code/JavaWrappers/csharp_wrapper/CMakeLists.txt
+          Code/JavaWrappers/csharp_wrapper/CMakeLists.txt && \
+        sed -i ".orig" "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/gmwrapper/GraphMolJava.i && \
+        sed -i ".orig" "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/csharp_wrapper/GraphMolCSharp.i
       args:
         chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
     - name: patch Avalon 2.0.3
-      ansible.builtin.shell: sed -i ".orig" -e 's|set(AVALON_VERSION "2\.0\.2")|set(AVALON_VERSION "2.0.3")|' \
-        -e 's|set(AVALONTOOLS_MD5SUM "fc188383a8896802e948c977b73dbe71")|set(AVALONTOOLS_MD5SUM "89e083c3c021baec77a2b85a641c86dd")|' \
+      ansible.builtin.shell: sed -i ".orig" -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.3\")|" \
+        -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"89e083c3c021baec77a2b85a641c86dd\")|" \
         External/AvalonTools/CMakeLists.txt
       args:
         chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"

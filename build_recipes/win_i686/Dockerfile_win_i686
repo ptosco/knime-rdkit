@@ -159,22 +159,22 @@ RUN curl -L -O https://github.com/rdkit/rdkit/archive/refs/tags/Release_${RDKIT_
 RUN tar xzf Release_${RDKIT_RELEASE}.tar.gz
 WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}
 COPY --chown=docker:docker win-i686.cmake msvcr120.dll ${SRC}/rdkit-Release_${RDKIT_RELEASE}/
-RUN sed -i 's|#if _MSC_VER|#ifdef _WIN32|' Code/GraphMol/catch_chirality.cpp
-RUN sed -i 's|Windows\.h|windows.h|' Code/GraphMol/MMPA/MMPA_UnitTest.cpp
-RUN sed -i -e 's|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Cairo::Cairo\)|\1target_include_directories(MolDraw2D PUBLIC ${DEPS}/include/cairo)\n\1\2 ${DEPS}/lib/libcairo.a /usr/i686-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|' \
-    -e 's|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Freetype::Freetype\)|\1target_include_directories(MolDraw2D PUBLIC ${DEPS}/include/freetype2)\n\1\2 ${DEPS}/lib/libfreetype.a ${DEPS}/lib/libz.a|' \
+RUN sed -i "s|#if _MSC_VER|#ifdef _WIN32|" Code/GraphMol/catch_chirality.cpp
+RUN sed -i "s|Windows\.h|windows.h|" Code/GraphMol/MMPA/MMPA_UnitTest.cpp
+RUN sed -i -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Cairo::Cairo\)|\1target_include_directories(MolDraw2D PUBLIC ${DEPS}/include/cairo)\n\1\2 ${DEPS}/lib/libcairo.a /usr/i686-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
+    -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Freetype::Freetype\)|\1target_include_directories(MolDraw2D PUBLIC ${DEPS}/include/freetype2)\n\1\2 ${DEPS}/lib/libfreetype.a ${DEPS}/lib/libz.a|" \
     Code/GraphMol/MolDraw2D/CMakeLists.txt
-RUN sed -i -e 's|if(WIN32)|if(FALSE)|' \
-    -e 's|\(SWIG_LINK_LIBRARIES *( *\)\(GraphMolWrap *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ -Wl,--add-stdcall-alias \3 /usr/i686-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|' \
+RUN sed -i -e "s|if(WIN32)|if(FALSE)|" \
+    -e "s|\(SWIG_LINK_LIBRARIES *( *\)\(GraphMolWrap *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ -Wl,--add-stdcall-alias \3 /usr/i686-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
     Code/JavaWrappers/gmwrapper/CMakeLists.txt
-RUN sed -i 's|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ -Wl,--add-stdcall-alias \3 /usr/i686-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|' \
+RUN sed -i "s|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ -Wl,--add-stdcall-alias \3 /usr/i686-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
     Code/JavaWrappers/csharp_wrapper/CMakeLists.txt
 # Patch for Avalon 2.0.3
-RUN sed -i -e 's|set(AVALON_VERSION "2\.0\.2")|set(AVALON_VERSION "2.0.3")|' \
-    -e 's|set(AVALONTOOLS_MD5SUM "fc188383a8896802e948c977b73dbe71")|set(AVALONTOOLS_MD5SUM "89e083c3c021baec77a2b85a641c86dd")|' \
+RUN sed -i -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.3\")|" \
+    -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"89e083c3c021baec77a2b85a641c86dd\")|" \
     External/AvalonTools/CMakeLists.txt
-RUN sed -i 's|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|' Code/JavaWrappers/gmwrapper/GraphMolJava.i
-RUN sed -i 's|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|' Code/JavaWrappers/csharp_wrapper/GraphMolCSharp.i
+RUN sed -i "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/gmwrapper/GraphMolJava.i
+RUN sed -i "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/csharp_wrapper/GraphMolCSharp.i
 # Begin patch for Avalon 2.0.3 on Windows
 COPY --chown=docker:docker avalon203_win32_patch.diff ${SRC}/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
 WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
