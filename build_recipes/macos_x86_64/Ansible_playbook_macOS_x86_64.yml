@@ -6,13 +6,52 @@
   connection: local
   vars:
     BUILD_CONCURRENCY: 6
-    DEPS: "{{ playbook_dir }}/deps"
-    IMAGE: "{{ playbook_dir }}/image"
     MIN_MACOS_VERSION: "10.10"
     ARCH: "x86_64"
     BUILD_TARGET: "-mmacosx-version-min={{ MIN_MACOS_VERSION }} -arch {{ ARCH }}"
     RDKIT_RELEASE: "2022_09_1"
+    RDKIT_CHKSUM: "5772bd0a9815ca00538f3d4843c725b6"
+    PKGCONFIG_VERSION: "0.29.2"
+    PKFCONFIG_CHKSUM: "76e501663b29cb7580245720edfb6106164fad2b2e5d3d3763c88a5a"
+    ZLIB_VERSION: "1.2.13"
+    ZLIB_CHKSUM: "9b8aa094c4e5765dabf4da391f00d15c"
+    BZIP2_VERSION: "1.0.8"
+    BZIP2_CHKSUM: "67e051268d0c475ea773822f7500d0e5"
+    BOOST_VERSION: "1_80_0"
+    BOOST_CHKSUM: "df7dc2fc6de751753198a5bf70210da7"
+    CMAKE_VERSION: "3.24.2"
+    CMAKE_CHKSUM: "84d08f30b110401d8178f0708c19f1fe"
+    EIGEN_VERSION: "3.4.0"
+    EIGEN_CHKSUM: "132dde48fe2b563211675626d29f1707"
+    PCRE_VERSION: "8.45"
+    PCRE_CHKSUM: "4452288e6a0eefb2ab11d36010a1eebb"
+    FREETYPE_VERSION: "2.12.1"
+    FREETYPE_CHKSUM: "8bc5c9c9df7ac12c504f8918552a7cf2"
+    SWIG_VERSION: "3.0.12"
+    SWIG_CHKSUM: "82133dfa7bba75ff9ad98a7046be687c"
+    LIBPNG_VERSION: "1.6.38"
+    LIBPNG_CHKSUM: "151d579116e601e393e780b7f46b2ff0"
+    PIXMAN_VERSION: "0.42.0"
+    PIXMAN_CHKSUM: "d925aa9e9ed9d419b6c2e02a61a11d29"
+    CAIRO_VERSION: "1.16.0"
+    CAIRO_CHKSUM: "f19e0353828269c22bd72e271243a552"
+    OPENJDK8_VERSION: "jdk8u352-b08"
+    OPENJDK8_CHKSUM: "f74d949aaaabd6116eaeccc34cc5ff707d3317b2cdbd3a8147920e1851d20cf2"
+    MONO_VERSION: "6.12.0.182"
+    MONO_CHKSUM: "3e7d4c67a03f4edc542c57d2684c9819"
+    DEPS: "{{ playbook_dir }}/deps"
+    WORK: "{{ playbook_dir }}/work"
+    SRC: "{{ playbook_dir }}/src"
+    IMAGE: "{{ playbook_dir }}/image"
   tasks:
+
+  - name: find OpenJDK short version
+    ansible.builtin.shell: echo {{ OPENJDK8_VERSION }} | sed "s|jdk\(.*\)-\(.*\)|\1\2|"
+    register: openjdk8_short_reg
+
+  - name: set OpenJDK short version var
+    ansible.builtin.set_fact:
+      OPENJDK8_SHORT_VERSION: "{{ openjdk8_short_reg.stdout }}"
 
   - name: find SDK path
     ansible.builtin.shell: xcrun --show-sdk-path
@@ -23,12 +62,13 @@
       sdk_path_var: "{{ sdk_path_reg.stdout }}"
 
   - name: create main directories
-    ansible.builtin.shell: mkdir -p ./src ./work ./image ./deps
+    ansible.builtin.shell: mkdir -p "{{ SRC }}" "{{ WORK }}" "{{ IMAGE }}" "{{ DEPS }}"
 
   - name: create work sub-directories
-    ansible.builtin.shell: mkdir -p ./work/boost ./work/cmake ./work/eigen ./work/zlib \
-      ./work/bzip2 ./work/freetype ./work/pcre ./work/swig ./work/pkgconfig ./work/cairo \
-      ./work/java_devel ./work/mono ./deps/openjdk8
+    ansible.builtin.shell: mkdir -p "{{ WORK }}/boost" "{{ WORK }}/cmake" "{{ WORK }}/eigen" \
+      "{{ WORK }}/zlib" "{{ WORK }}/bzip2" "{{ WORK }}/freetype" "{{ WORK }}/pcre" \
+      "{{ WORK }}/swig" "{{ WORK }}/pkgconfig" "{{ WORK }}/cairo" "{{ WORK }}/mono" \
+      "{{ DEPS }}/openjdk8"
 
   - name: does pkg-config exist?
     stat: 
@@ -38,30 +78,30 @@
   - name: install pkg-config
     block:
     - name: download pkg-config
-      ansible.builtin.shell: if [ ! -e pkg-config-0.29.2.tar.gz ] || \
-          [ `shasum -q pkg-config-0.29.2.tar.gz` != 76e501663b29cb7580245720edfb6106164fad2b2e5d3d3763c88a5a ]; then \
-          rm -f pkg-config-0.29.2.tar.gz; \
-          curl -L -O http://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz; \
+      ansible.builtin.shell: if [ ! -e pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz ] || \
+          [ `shasum -q pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz` != {{ PKFCONFIG_CHKSUM }} ]; then \
+          rm -f pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz; \
+          curl -L -O http://pkgconfig.freedesktop.org/releases/pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz; \
         fi
       args:
-        chdir: ./work/pkgconfig
+        chdir: "{{ WORK }}/pkgconfig"
 
     - name: untar pkg-config
-      ansible.builtin.shell: tar xzf pkg-config-0.29.2.tar.gz
+      ansible.builtin.shell: tar xzf pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz
       args:
-        chdir: ./work/pkgconfig
+        chdir: "{{ WORK }}/pkgconfig"
 
     - name: configure pkg-config
       ansible.builtin.shell: CC="clang -fPIC {{ BUILD_TARGET }}" ./configure \
         --enable-shared=no --enable-static=yes --with-internal-glib --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/pkgconfig/pkg-config-0.29.2
+        chdir: "{{ WORK }}/pkgconfig/pkg-config-{{ PKGCONFIG_VERSION }}"
 
     - name: build pkg-config
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/pkgconfig/pkg-config-0.29.2
+        chdir: "{{ WORK }}/pkgconfig/pkg-config-{{ PKGCONFIG_VERSION }}"
     when: pkgconfig_exe.stat.exists == false
 
   - name: does zlib exist?
@@ -72,28 +112,28 @@
   - name: install zlib
     block:
     - name: download zlib
-      ansible.builtin.shell: if [ ! -e zlib-1.2.13.tar.gz ] || \
-          [ `md5 -q zlib-1.2.13.tar.gz` != 9b8aa094c4e5765dabf4da391f00d15c ]; then \
-          rm -f zlib-1.2.13.tar.gz; \
-          curl -L -O https://zlib.net/zlib-1.2.13.tar.gz; \
+      ansible.builtin.shell: if [ ! -e zlib-{{ ZLIB_VERSION }}.tar.gz ] || \
+          [ `md5 -q zlib-{{ ZLIB_VERSION }}.tar.gz` != {{ ZLIB_CHKSUM }} ]; then \
+          rm -f zlib-{{ ZLIB_VERSION }}.tar.gz; \
+          curl -L -O https://zlib.net/zlib-{{ ZLIB_VERSION }}.tar.gz; \
         fi
       args:
-        chdir: ./work/zlib
+        chdir: "{{ WORK }}/zlib"
 
     - name: untar zlib
-      ansible.builtin.shell: tar xzf zlib-1.2.13.tar.gz
+      ansible.builtin.shell: tar xzf zlib-{{ ZLIB_VERSION }}.tar.gz
       args:
-        chdir: ./work/zlib
+        chdir: "{{ WORK }}/zlib"
 
     - name: configure zlib
       ansible.builtin.shell: CC="clang -fPIC {{ BUILD_TARGET }}" ./configure --static --64 --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/zlib/zlib-1.2.13
+        chdir: "{{ WORK }}/zlib/zlib-{{ ZLIB_VERSION }}"
 
     - name: build zlib
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/zlib/zlib-1.2.13
+        chdir: "{{ WORK }}/zlib/zlib-{{ ZLIB_VERSION }}"
     when: libz.stat.exists == false
 
   - name: does bzip2 exist?
@@ -104,25 +144,25 @@
   - name: install bzip2
     block:
     - name: download bzip2
-      ansible.builtin.shell: if [ ! -e bzip2-1.0.8.tar.gz ] || \
-          [ `md5 -q bzip2-1.0.8.tar.gz` != 67e051268d0c475ea773822f7500d0e5 ]; then \
-          rm -f bzip2-1.0.8.tar.gz; \
-          curl -L -O https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz; \
+      ansible.builtin.shell: if [ ! -e bzip2-{{ BZIP2_VERSION }}.tar.gz ] || \
+          [ `md5 -q bzip2-{{ BZIP2_VERSION }}.tar.gz` != BZIP2_CHKSUM ]; then \
+          rm -f bzip2-{{ BZIP2_VERSION }}.tar.gz; \
+          curl -L -O https://sourceware.org/pub/bzip2/bzip2-{{ BZIP2_VERSION }}.tar.gz; \
         fi
       args:
-        chdir: ./work/bzip2
+        chdir: "{{ WORK }}/bzip2"
 
     - name: untar bzip2
-      ansible.builtin.shell: tar xzf bzip2-1.0.8.tar.gz
+      ansible.builtin.shell: tar xzf bzip2-{{ BZIP2_VERSION }}.tar.gz
       args:
-        chdir: ./work/bzip2
+        chdir: "{{ WORK }}/bzip2"
 
     - name: build bzip2
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
           make CC="clang -fPIC {{ BUILD_TARGET }}" PREFIX="{{ DEPS }}" -j{{ BUILD_CONCURRENCY }} && \
           make PREFIX="{{ DEPS }}" -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/bzip2/bzip2-1.0.8
+        chdir: "{{ WORK }}/bzip2/bzip2-{{ BZIP2_VERSION }}"
     when: libbz2.stat.exists == false
 
   - name: does boost exist?
@@ -133,35 +173,35 @@
   - name: install boost
     block:
     - name: download boost
-      ansible.builtin.shell: if [ ! -e boost_1_80_0.tar.bz2 ] || \
-          [ `md5 -q boost_1_80_0.tar.bz2` != df7dc2fc6de751753198a5bf70210da7 ]; then \
-          rm -f boost_1_80_0.tar.bz2; \
-          curl -L -O https://boostorg.jfrog.io/artifactory/main/release/1.80.0/source/boost_1_80_0.tar.bz2; \
+      ansible.builtin.shell: if [ ! -e boost_{{ BOOST_VERSION }}.tar.bz2 ] || \
+          [ `md5 -q boost_{{ BOOST_VERSION }}.tar.bz2` != {{ BOOST_CHKSUM }} ]; then \
+          rm -f boost_{{ BOOST_VERSION }}.tar.bz2; \
+          curl -L -O https://boostorg.jfrog.io/artifactory/main/release/`echo {{ BOOST_VERSION }} | sed "s|_|.|g"`/source/boost_{{ BOOST_VERSION }}.tar.bz2; \
         fi
       args:
-        chdir: ./work/boost
+        chdir: "{{ WORK }}/boost"
 
     - name: untar boost
-      ansible.builtin.shell: tar xjf boost_1_80_0.tar.bz2
+      ansible.builtin.shell: tar xjf boost_{{ BOOST_VERSION }}.tar.bz2
       args:
-        chdir: ./work/boost
+        chdir: "{{ WORK }}/boost"
 
     - name: bootstrap boost
       ansible.builtin.shell: MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" ./bootstrap.sh \
         --with-libraries=serialization,iostreams,regex,system --without-icu --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/boost/boost_1_80_0
+        chdir: "{{ WORK }}/boost/boost_{{ BOOST_VERSION }}"
 
     - name: bjam boost
       ansible.builtin.shell: MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" \
         ./b2 cflags="-fPIC {{ BUILD_TARGET }}" cxxflags="-fPIC {{ BUILD_TARGET }}" \
-          --prefix="{{ playbook_dir }}/work/boost/install" variant=release link=static \
+          --prefix="{{ WORK }}/boost/install" variant=release link=static \
           --with-serialization --with-iostreams --with-regex --with-system \
           -sBZIP2_INCLUDE="{{ DEPS }}/include" -sBZIP2_LIBPATH="{{ DEPS }}/lib" \
           -sZLIB_INCLUDE="{{ DEPS }}/include" -sZLIB_LIBPATH="{{ DEPS }}/lib" && \
         cp -R stage/lib "{{ DEPS }}" && cp -R boost "{{ DEPS }}/include"
       args:
-        chdir: ./work/boost/boost_1_80_0
+        chdir: "{{ WORK }}/boost/boost_{{ BOOST_VERSION }}"
     when: libboost.stat.exists == false
 
   - name: does cmake exist?
@@ -172,30 +212,31 @@
   - name: install cmake
     block:
     - name: download cmake
-      ansible.builtin.shell: if [ ! -e cmake-3.24.2.tar.gz ] || \
-          [ `md5 -q cmake-3.24.2.tar.gz` != 84d08f30b110401d8178f0708c19f1fe ]; then \
-          rm -f cmake-3.24.2.tar.gz; \
-          curl -L -O https://github.com/Kitware/CMake/releases/download/v3.24.2/cmake-3.24.2.tar.gz; \
+      ansible.builtin.shell: if [ ! -e cmake-{{ CMAKE_VERSION }}.tar.gz ] || \
+          [ `md5 -q cmake-{{ CMAKE_VERSION }}.tar.gz` != {{ CMAKE_CHKSUM }} ]; then \
+          rm -f cmake-{{ CMAKE_VERSION }}.tar.gz; \
+          curl -L -O https://github.com/Kitware/CMake/releases/download/v{{ CMAKE_VERSION }}/cmake-{{ CMAKE_VERSION }}.tar.gz; \
         fi
       args:
-        chdir: ./work/cmake
+        chdir: "{{ WORK }}/cmake"
 
     - name: untar cmake
-      ansible.builtin.shell: tar xzf cmake-3.24.2.tar.gz
+      ansible.builtin.shell: tar xzf cmake-{{ CMAKE_VERSION }}.tar.gz
       args:
-        chdir: ./work/cmake
+        chdir: "{{ WORK }}/cmake"
 
     - name: bootsrap cmake
-      ansible.builtin.shell: MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" ./bootstrap --prefix={{ DEPS }} --parallel={{ BUILD_CONCURRENCY }}
+      ansible.builtin.shell: MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" \
+        ./bootstrap --prefix={{ DEPS }} --parallel={{ BUILD_CONCURRENCY }}
       args:
-        chdir: ./work/cmake/cmake-3.24.2
+        chdir: "{{ WORK }}/cmake/cmake-{{ CMAKE_VERSION }}"
 
     - name: build cmake
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" make -j{{ BUILD_CONCURRENCY }} && \
         make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/cmake/cmake-3.24.2
+        chdir: "{{ WORK }}/cmake/cmake-{{ CMAKE_VERSION }}"
     when: cmake_exe.stat.exists == false
 
   - name: does eigen exist?
@@ -206,29 +247,29 @@
   - name: install eigen
     block:
     - name: download eigen
-      ansible.builtin.shell: if [ ! -e eigen-3.4.0.tar.bz2 ] || \
-          [ `md5 -q eigen-3.4.0.tar.bz2` != 132dde48fe2b563211675626d29f1707 ]; then \
-          rm -f eigen-3.4.0.tar.bz2; \
-          curl -L -O https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2; \
+      ansible.builtin.shell: if [ ! -e eigen-{{ EIGEN_VERSION }}.tar.bz2 ] || \
+          [ `md5 -q eigen-{{ EIGEN_VERSION }}.tar.bz2` != {{ EIGEN_CHKSUM }} ]; then \
+          rm -f eigen-{{ EIGEN_VERSION }}.tar.bz2; \
+          curl -L -O https://gitlab.com/libeigen/eigen/-/archive/{{ EIGEN_VERSION }}/eigen-{{ EIGEN_VERSION }}.tar.bz2; \
         fi
       args:
-        chdir: ./work/eigen
+        chdir: "{{ WORK }}/eigen"
 
     - name: untar eigen
-      ansible.builtin.shell: tar xjf eigen-3.4.0.tar.bz2
+      ansible.builtin.shell: tar xjf eigen-{{ EIGEN_VERSION }}.tar.bz2
       args:
-        chdir: ./work/eigen
+        chdir: "{{ WORK }}/eigen"
 
     - name: configure eigen
       ansible.builtin.shell: mkdir -p build && cd build && \
         MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" "{{ DEPS }}/bin/cmake" -DCMAKE_INSTALL_PREFIX="{{ DEPS }}" ..
       args:
-        chdir: ./work/eigen/eigen-3.4.0
+        chdir: "{{ WORK }}/eigen/eigen-{{ EIGEN_VERSION }}"
 
     - name: build eigen
       ansible.builtin.shell: MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/eigen/eigen-3.4.0/build
+        chdir: "{{ WORK }}/eigen/eigen-{{ EIGEN_VERSION }}"
     when: eigen_headers.stat.exists == false
 
   - name: does PCRE exist?
@@ -239,35 +280,35 @@
   - name: install PCRE
     block:
     - name: download PCRE
-      ansible.builtin.shell: if [ ! -e pcre-8.45.tar.bz2 ] || \
-          [ `md5 -q pcre-8.45.tar.bz2` != 4452288e6a0eefb2ab11d36010a1eebb ]; then \
-          rm -f pcre-8.45.tar.bz2; \
+      ansible.builtin.shell: if [ ! -e pcre-{{ PCRE_VERSION }}.tar.bz2 ] || \
+          [ `md5 -q pcre-{{ PCRE_VERSION }}.tar.bz2` != {{ PCRE_CHKSUM }} ]; then \
+          rm -f pcre-{{ PCRE_VERSION }}.tar.bz2; \
           for i in `seq 1 5`; do \
-            curl -L -o pcre-8.45.tar.bz2 https://sourceforge.net/projects/pcre/files/pcre/8.45/pcre-8.45.tar.bz2/download && \
-              [ `md5 -q pcre-8.45.tar.bz2` = 4452288e6a0eefb2ab11d36010a1eebb ] && touch pcre_md5_ok && break; \
+            curl -L -o pcre-{{ PCRE_VERSION }}.tar.bz2 https://sourceforge.net/projects/pcre/files/pcre/{{ PCRE_VERSION }}/pcre-{{ PCRE_VERSION }}.tar.bz2/download && \
+              [ `md5 -q pcre-{{ PCRE_VERSION }}.tar.bz2` = {{ PCRE_CHKSUM }} ] && touch pcre_md5_ok && break; \
           done; \
           test -e pcre_md5_ok || ( >&2 echo "Failed to download PCRE" && exit 1 ); \
         fi
       args:
-        chdir: ./work/pcre
+        chdir: "{{ WORK }}/pcre"
 
     - name: untar PCRE
-      ansible.builtin.shell: tar xjf pcre-8.45.tar.bz2
+      ansible.builtin.shell: tar xjf pcre-{{ PCRE_VERSION }}.tar.bz2
       args:
-        chdir: ./work/pcre
+        chdir: "{{ WORK }}/pcre"
 
     - name: configure PCRE
       ansible.builtin.shell: CC="clang {{ BUILD_TARGET }}" CXX="clang++ {{ BUILD_TARGET }}" \
         MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" \
         ./configure --enable-static=yes --enable-shared=no --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/pcre/pcre-8.45
+        chdir: "{{ WORK }}/pcre/pcre-{{ PCRE_VERSION }}"
 
     - name: build PCRE
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/pcre/pcre-8.45
+        chdir: "{{ WORK }}/pcre/pcre-{{ PCRE_VERSION }}"
     when: libpcre.stat.exists == false
 
   - name: does swig exist?
@@ -278,34 +319,34 @@
   - name: install swig
     block:
     - name: download swig
-      ansible.builtin.shell: if [ ! -e swig-3.0.12.tar.gz ] || \
-          [ `md5 -q swig-3.0.12.tar.gz` != 82133dfa7bba75ff9ad98a7046be687c ]; then \
-          rm -f swig-3.0.12.tar.gz; \
+      ansible.builtin.shell: if [ ! -e swig-{{ SWIG_VERSION }}.tar.gz ] || \
+          [ `md5 -q swig-{{ SWIG_VERSION }}.tar.gz` != {{ SWIG_CHKSUM }} ]; then \
+          rm -f swig-{{ SWIG_VERSION }}.tar.gz; \
           for i in `seq 1 5`; do \
-            curl -L -o swig-3.0.12.tar.gz https://sourceforge.net/projects/swig/files/swig/swig-3.0.12/swig-3.0.12.tar.gz/download && \
-              [ `md5 -q swig-3.0.12.tar.gz` = 82133dfa7bba75ff9ad98a7046be687c ] && touch swig_md5_ok && break; \
+            curl -L -o swig-{{ SWIG_VERSION }}.tar.gz https://sourceforge.net/projects/swig/files/swig/swig-{{ SWIG_VERSION }}/swig-{{ SWIG_VERSION }}.tar.gz/download && \
+              [ `md5 -q swig-{{ SWIG_VERSION }}.tar.gz` = {{ SWIG_CHKSUM }} ] && touch swig_md5_ok && break; \
           done; \
           test -e swig_md5_ok || ( >&2 echo "Failed to download SWIG" && exit 1 ); \
         fi
       args:
-        chdir: ./work/swig
+        chdir: "{{ WORK }}/swig"
 
     - name: untar swig
-      ansible.builtin.shell: tar xzf swig-3.0.12.tar.gz
+      ansible.builtin.shell: tar xzf swig-{{ SWIG_VERSION }}.tar.gz
       args:
-        chdir: ./work/swig
+        chdir: "{{ WORK }}/swig"
 
     - name: configure swig
       ansible.builtin.shell: PKG_CONFIG_PATH="{{ DEPS }}/lib/pkgconfig" PATH="{{ DEPS }}/bin:$PATH" \
         CC="clang {{ BUILD_TARGET }}" CXX="clang++ {{ BUILD_TARGET }}" ./configure --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/swig/swig-3.0.12
+        chdir: "{{ WORK }}/swig/swig-{{ SWIG_VERSION }}"
 
     - name: build swig
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/swig/swig-3.0.12
+        chdir: "{{ WORK }}/swig/swig-{{ SWIG_VERSION }}"
     when: swig_exe.stat.exists == false
 
   - name: does freetype exist?
@@ -316,31 +357,31 @@
   - name: install freetype
     block:
     - name: download freetype
-      ansible.builtin.shell: if [ ! -e freetype-2.12.1.tar.gz ] || \
-          [ `md5 -q freetype-2.12.1.tar.gz` != 8bc5c9c9df7ac12c504f8918552a7cf2 ]; then \
-          rm -f freetype-2.12.1.tar.gz; \
-          curl -L -O https://download.savannah.gnu.org/releases/freetype/freetype-2.12.1.tar.gz; \
+      ansible.builtin.shell: if [ ! -e freetype-{{ FREETYPE_VERSION }}.tar.gz ] || \
+          [ `md5 -q freetype-{{ FREETYPE_VERSION }}.tar.gz` != {{ FREETYPE_CHKSUM }} ]; then \
+          rm -f freetype-{{ FREETYPE_VERSION }}.tar.gz; \
+          curl -L -O https://download.savannah.gnu.org/releases/freetype/freetype-{{ FREETYPE_VERSION }}.tar.gz; \
         fi
       args:
-        chdir: ./work/freetype
+        chdir: "{{ WORK }}/freetype"
 
     - name: untar freetype
-      ansible.builtin.shell: tar xzf freetype-2.12.1.tar.gz
+      ansible.builtin.shell: tar xzf freetype-{{ FREETYPE_VERSION }}.tar.gz
       args:
-        chdir: ./work/freetype
+        chdir: "{{ WORK }}/freetype"
 
     - name: configure freetype
       ansible.builtin.shell: CC="clang -fPIC {{ BUILD_TARGET }}" CXX="clang++ -fPIC {{ BUILD_TARGET }}" \
         PATH="{{ DEPS }}/bin:$PATH" PKG_CONFIG_PATH="{{ DEPS }}/lib/pkgconfig" \
         ./configure --enable-static=yes --enable-shared=no --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/freetype/freetype-2.12.1
+        chdir: "{{ WORK }}/freetype/freetype-{{ FREETYPE_VERSION }}"
 
     - name: build freetype
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/freetype/freetype-2.12.1
+        chdir: "{{ WORK }}/freetype/freetype-{{ FREETYPE_VERSION }}"
     when: libfreetype.stat.exists == false
 
   - name: does libpng exist?
@@ -351,35 +392,35 @@
   - name: install libpng
     block:
     - name: download libpng
-      ansible.builtin.shell: if [ ! -e libpng-1.6.38.tar.gz ] || \
-          [ `md5 -q libpng-1.6.38.tar.gz` != 151d579116e601e393e780b7f46b2ff0 ]; then \
-          rm -f libpng-1.6.38.tar.gz; \
+      ansible.builtin.shell: if [ ! -e libpng-{{ LIBPNG_VERSION }}.tar.gz ] || \
+          [ `md5 -q libpng-{{ LIBPNG_VERSION }}.tar.gz` != {{ LIBPNG_CHKSUM }} ]; then \
+          rm -f libpng-{{ LIBPNG_VERSION }}.tar.gz; \
           for i in `seq 1 5`; do \
-            curl -L -O https://download.sourceforge.net/libpng/libpng-1.6.38.tar.gz && \
-              [ `md5 -q libpng-1.6.38.tar.gz` = 151d579116e601e393e780b7f46b2ff0 ] && touch libpng_md5_ok && break; \
+            curl -L -O https://download.sourceforge.net/libpng/libpng-{{ LIBPNG_VERSION }}.tar.gz && \
+              [ `md5 -q libpng-{{ LIBPNG_VERSION }}.tar.gz` = {{ LIBPNG_CHKSUM }} ] && touch libpng_md5_ok && break; \
           done; \
           test -e libpng_md5_ok || ( >&2 echo "Failed to download libpng" && exit 1 ); \
         fi
       args:
-        chdir: ./work/cairo
+        chdir: "{{ WORK }}/cairo"
 
     - name: untar libpng
-      ansible.builtin.shell: tar xzf libpng-1.6.38.tar.gz
+      ansible.builtin.shell: tar xzf libpng-{{ LIBPNG_VERSION }}.tar.gz
       args:
-        chdir: ./work/cairo
+        chdir: "{{ WORK }}/cairo"
 
     - name: configure libpng
       ansible.builtin.shell: CC="clang -fPIC {{ BUILD_TARGET }}" \
         PATH="{{ DEPS }}/bin:$PATH" PKG_CONFIG_PATH="{{ DEPS }}/lib/pkgconfig" \
         ./configure --enable-shared=no --enable-static=yes --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/cairo/libpng-1.6.38
+        chdir: "{{ WORK }}/cairo/libpng-{{ LIBPNG_VERSION }}"
 
     - name: build libpng
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/cairo/libpng-1.6.38
+        chdir: "{{ WORK }}/cairo/libpng-{{ LIBPNG_VERSION }}"
     when: libpng.stat.exists == false
 
   - name: does pixman exist?
@@ -390,31 +431,31 @@
   - name: install pixman
     block:
     - name: download pixman
-      ansible.builtin.shell: if [ ! -e pixman-0.42.0.tar.gz ] || \
-          [ `md5 -q pixman-0.42.0.tar.gz` != d925aa9e9ed9d419b6c2e02a61a11d29 ]; then \
-          rm -f pixman-0.42.0.tar.gz; \
-          curl -L -O https://www.cairographics.org/releases/pixman-0.42.0.tar.gz; \
+      ansible.builtin.shell: if [ ! -e pixman-{{ PIXMAN_VERSION }}.tar.gz ] || \
+          [ `md5 -q pixman-{{ PIXMAN_VERSION }}.tar.gz` != {{ PIXMAN_CHKSUM }} ]; then \
+          rm -f pixman-{{ PIXMAN_VERSION }}.tar.gz; \
+          curl -L -O https://www.cairographics.org/releases/pixman-{{ PIXMAN_VERSION }}.tar.gz; \
         fi
       args:
-        chdir: ./work/cairo
+        chdir: "{{ WORK }}/cairo"
 
     - name: untar pixman
-      ansible.builtin.shell: tar xzf pixman-0.42.0.tar.gz
+      ansible.builtin.shell: tar xzf pixman-{{ PIXMAN_VERSION }}.tar.gz
       args:
-        chdir: ./work/cairo
+        chdir: "{{ WORK }}/cairo"
 
     - name: configure pixman
       ansible.builtin.shell: CC="clang -fPIC {{ BUILD_TARGET }}" \
         PATH="{{ DEPS }}/bin:$PATH" PKG_CONFIG_PATH="{{ DEPS }}/lib/pkgconfig" \
         ./configure --enable-shared=no --enable-static=yes --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/cairo/pixman-0.42.0
+        chdir: "{{ WORK }}/cairo/pixman-{{ PIXMAN_VERSION }}"
 
     - name: build pixman
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/cairo/pixman-0.42.0
+        chdir: "{{ WORK }}/cairo/pixman-{{ PIXMAN_VERSION }}"
     when: libpixman.stat.exists == false
 
   - name: does cairo exist?
@@ -425,18 +466,18 @@
   - name: install cairo
     block:
     - name: download cairo
-      ansible.builtin.shell: if [ ! -e cairo-1.16.0.tar.xz ] || \
-          [ `md5 -q cairo-1.16.0.tar.xz` != f19e0353828269c22bd72e271243a552 ]; then \
-          rm -f cairo-1.16.0.tar.xz; \
-          curl -L -O https://www.cairographics.org/releases/cairo-1.16.0.tar.xz; \
+      ansible.builtin.shell: if [ ! -e cairo-{{ CAIRO_VERSION }}.tar.xz ] || \
+          [ `md5 -q cairo-{{ CAIRO_VERSION }}.tar.xz` != {{ CAIRO_CHKSUM }} ]; then \
+          rm -f cairo-{{ CAIRO_VERSION }}.tar.xz; \
+          curl -L -O https://www.cairographics.org/releases/cairo-{{ CAIRO_VERSION }}.tar.xz; \
         fi
       args:
-        chdir: ./work/cairo
+        chdir: "{{ WORK }}/cairo"
 
     - name: untar cairo
-      ansible.builtin.shell: tar xJf cairo-1.16.0.tar.xz
+      ansible.builtin.shell: tar xJf cairo-{{ CAIRO_VERSION }}.tar.xz
       args:
-        chdir: ./work/cairo
+        chdir: "{{ WORK }}/cairo"
 
     - name: configure cairo
       ansible.builtin.shell: CC="clang -fPIC {{ BUILD_TARGET }}" \
@@ -445,63 +486,63 @@
         LDFLAGS="-framework CoreFoundation -framework CoreGraphics" ./configure \
         --enable-shared=no --enable-static=yes --prefix="{{ DEPS }}"
       args:
-        chdir: ./work/cairo/cairo-1.16.0
+        chdir: "{{ WORK }}/cairo/cairo-{{ CAIRO_VERSION }}"
 
     - name: build cairo
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/cairo/cairo-1.16.0
+        chdir: "{{ WORK }}/cairo/cairo-{{ CAIRO_VERSION }}"
     when: libcairo.stat.exists == false
 
   - name: does OpenJDK8 exist?
     stat: 
-      path: ./deps/openjdk8/jdk8u352-b08/Contents/Home
+      path: "{{ DEPS }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home"
     register: openjdk8
 
   - name: install OpenJDK8
     block:
     - name: download OpenJDK8
-      ansible.builtin.shell: if [ ! -e OpenJDK8U-jdk_x64_mac_hotspot_8u352b08.tar.gz ] || \
-          [ `shasum -a 256 OpenJDK8U-jdk_x64_mac_hotspot_8u352b08.tar.gz` != f74d949aaaabd6116eaeccc34cc5ff707d3317b2cdbd3a8147920e1851d20cf2 ]; then \
-          rm -f OpenJDK8U-jdk_x64_mac_hotspot_8u352b08.tar.gz; \
-          curl -L -O https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u352-b08/OpenJDK8U-jdk_x64_mac_hotspot_8u352b08.tar.gz; \
+      ansible.builtin.shell: if [ ! -e OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz ] || \
+          [ `shasum -a 256 OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz` != {{ OPENJDK8_CHKSUM }} ]; then \
+          rm -f OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz; \
+          curl -L -O https://github.com/adoptium/temurin8-binaries/releases/download/{{ OPENJDK8_VERSION }}/OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz; \
         fi
       args:
-        chdir: ./deps/openjdk8
+        chdir: "{{ DEPS }}/openjdk8"
 
     - name: untar OpenJDK8
-      ansible.builtin.shell: tar xzf OpenJDK8U-jdk_x64_mac_hotspot_8u352b08.tar.gz
+      ansible.builtin.shell: tar xzf OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz
       args:
-        chdir: ./deps/openjdk8
+        chdir: "{{ DEPS }}/openjdk8"
     when: openjdk8.stat.exists == false
 
   - name: does Mono exist?
     stat: 
-      path: ./deps/bin/mcs
+      path: "{{ DEPS }}/bin/mcs"
     register: mcs_exe
 
   - name: install Mono
     block:
     - name: download Mono
-      ansible.builtin.shell: if [ ! -e mono-6.12.0.182.tar.xz ] || \
-          [ `md5 -q mono-6.12.0.182.tar.xz` != 3e7d4c67a03f4edc542c57d2684c9819 ]; then \
-          rm -f mono-6.12.0.182.tar.xz; \
-          curl -L -O https://download.mono-project.com/sources/mono/mono-6.12.0.182.tar.xz; \
+      ansible.builtin.shell: if [ ! -e mono-{{ MONO_VERSION }}.tar.xz ] || \
+          [ `md5 -q mono-{{ MONO_VERSION }}.tar.xz` != {{ MONO_CHKSUM }} ]; then \
+          rm -f mono-{{ MONO_VERSION }}.tar.xz; \
+          curl -L -O https://download.mono-project.com/sources/mono/mono-{{ MONO_VERSION }}.tar.xz; \
         fi
       args:
-        chdir: ./work/mono
+        chdir: "{{ WORK }}/mono"
 
     - name: untar Mono
-      ansible.builtin.shell: tar xJf mono-6.12.0.182.tar.xz
+      ansible.builtin.shell: tar xJf mono-{{ MONO_VERSION }}.tar.xz
       args:
-        chdir: ./work/mono
+        chdir: "{{ WORK }}/mono"
 
     - name: get build host
       ansible.builtin.shell: ./config.guess | sed "s|^\([^-]*\)\(-.*\)$|{{ ARCH }}\2|"
       register: build_host_reg
       args:
-        chdir: ./work/mono/mono-6.12.0.182
+        chdir: "{{ WORK }}/mono/mono-{{ MONO_VERSION }}"
 
     - name: build host to var
       ansible.builtin.set_fact:
@@ -513,7 +554,7 @@
         PKG_CONFIG_PATH="{{ DEPS }}/lib/pkgconfig" MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" PATH="{{ DEPS }}/bin:$PATH" \
         ./configure --disable-nls --prefix="{{ DEPS }}" --build="{{ build_host_var }}" --host="{{ build_host_var }}" --with-static-zlib="{{ DEPS }}/lib/libz.a"
       args:
-        chdir: ./work/mono/mono-6.12.0.182
+        chdir: "{{ WORK }}/mono/mono-{{ MONO_VERSION }}"
 
     - name: patch Mono
       ansible.builtin.shell: sed -i ".orig" "s|/\* \#undef HAVE_UCONTEXT_H \*/|#define HAVE_UCONTEXT_H 1|" config.h && \
@@ -522,13 +563,13 @@
         sed -i ".orig" "s|^\( *#ifdef HAVE_UCONTEXT_H *\)$|\1\n#define _XOPEN_SOURCE 600|" mono/mini/exceptions-amd64.c && \
         sed -i ".orig" "s|^\( *#if \!defined(__cplusplus) \&\& \!__OBJC2__ *\)$|\1 \&\& !defined(HAVE_OBJ_SUPER_SUPER_CLASS)|" mono/utils/mono-threads-mach-helper.c
       args:
-        chdir: ./work/mono/mono-6.12.0.182
+        chdir: "{{ WORK }}/mono/mono-{{ MONO_VERSION }}"
 
     - name: build Mono
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
         make -j{{ BUILD_CONCURRENCY }} && make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: ./work/mono/mono-6.12.0.182
+        chdir: "{{ WORK }}/mono/mono-{{ MONO_VERSION }}"
     when: mcs_exe.stat.exists == false
 
   - name: does RDKit exist?
@@ -540,17 +581,17 @@
     block:
     - name: download RDKit
       ansible.builtin.shell: if [ ! -e "Release_{{ RDKIT_RELEASE }}.tar.gz" ] || \
-          [ `md5 -q "Release_{{ RDKIT_RELEASE }}.tar.gz"` != 5772bd0a9815ca00538f3d4843c725b6 ]; then \
+          [ `md5 -q "Release_{{ RDKIT_RELEASE }}.tar.gz"` != {{ RDKIT_CHKSUM }} ]; then \
           rm -f "Release_{{ RDKIT_RELEASE }}.tar.gz"; \
           curl -L -O "https://github.com/rdkit/rdkit/archive/refs/tags/Release_{{ RDKIT_RELEASE }}.tar.gz"; \
         fi
       args:
-        chdir: ./src
+        chdir: "{{ SRC }}"
 
     - name: untar RDKit
       ansible.builtin.shell: tar xzf "Release_{{ RDKIT_RELEASE }}.tar.gz"
       args:
-        chdir: ./src
+        chdir: "{{ SRC }}"
 
     - name: patch RDKit
       ansible.builtin.shell: sed -i ".orig" "s|#if _MSC_VER|#ifdef _WIN32|" Code/GraphMol/catch_chirality.cpp && \
@@ -564,24 +605,25 @@
         sed -i ".orig" "s|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2\3 {{ DEPS }}/lib/libz.a {{ DEPS }}/lib/libbz2.a {{ DEPS }}/lib/libpixman-1.a {{ DEPS }}/lib/libpng16.a \"-framework CoreFoundation\" \"-framework CoreGraphics\"|" \
           Code/JavaWrappers/csharp_wrapper/CMakeLists.txt
       args:
-        chdir: "./src/rdkit-Release_{{ RDKIT_RELEASE }}"
+        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
     - name: patch Avalon 2.0.3
       ansible.builtin.shell: sed -i ".orig" -e 's|set(AVALON_VERSION "2\.0\.2")|set(AVALON_VERSION "2.0.3")|' \
         -e 's|set(AVALONTOOLS_MD5SUM "fc188383a8896802e948c977b73dbe71")|set(AVALONTOOLS_MD5SUM "89e083c3c021baec77a2b85a641c86dd")|' \
         External/AvalonTools/CMakeLists.txt
       args:
-        chdir: "./src/rdkit-Release_{{ RDKIT_RELEASE }}"
+        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
     - name: create build sub-directory
       ansible.builtin.shell: mkdir -p build
       args:
-        chdir: "./src/rdkit-Release_{{ RDKIT_RELEASE }}"
+        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
     - name: configure RDKit
       ansible.builtin.shell: rm -f CMakeCache.txt && \
-        JAVA_HOME="{{ DEPS }}/openjdk8/jdk8u352-b08/Contents/Home" \
-        PATH="{{ DEPS }}/bin:{{ DEPS }}/openjdk8/jdk8u352-b08/Contents/Home/bin:$PATH" \
+        JAVA_HOME="{{ DEPS }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home" \
+        PATH="{{ DEPS }}/bin:{{ DEPS }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home/bin:$PATH" \
+        FREETYPE_DIR="{{ DEPS }}" \
         "{{ DEPS }}/bin/cmake" \
           -D RDK_BUILD_INCHI_SUPPORT=ON \
           -D RDK_BUILD_AVALON_SUPPORT=ON \
@@ -608,16 +650,14 @@
           -D ZLIB_LIBRARY="{{ DEPS }}/lib/libz.a" \
           -D ZLIB_INCLUDE_DIR="{{ DEPS }}/include" \
           -D SWIG_EXECUTABLE="{{ DEPS }}/bin/swig" \
-          -D SWIG_DIR="{{ DEPS }}/share/swig/3.0.12" \
-          -D FREETYPE_LIBRARY="{{ DEPS }}/lib/libfreetype.a" \
-          -D FREETYPE_INCLUDE_DIRS="{{ DEPS }}/include/freetype2" \
+          -D SWIG_DIR="{{ DEPS }}/share/swig/{{ SWIG_VERSION }}" \
           -D CAIRO_INCLUDE_DIR="{{ DEPS }}/include/cairo" \
           -D CAIRO_LIBRARY_DIR="{{ DEPS }}/lib" \
           -D CMAKE_INSTALL_PREFIX="{{ IMAGE }}" \
           -D CMAKE_OSX_ARCHITECTURES="{{ ARCH }}" \
           ..
       args:
-        chdir: "./src/rdkit-Release_{{ RDKIT_RELEASE }}/build"
+        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}/build"
 
     - name: build RDKit
       ansible.builtin.shell: make -j{{ BUILD_CONCURRENCY }} clean && \
@@ -625,5 +665,5 @@
         cp ../Code/JavaWrappers/gmwrapper/libGraphMolWrap.jnilib ../Code/JavaWrappers/gmwrapper/org.RDKit*.jar {{ IMAGE }} && \
         cp ../Code/JavaWrappers/csharp_wrapper/RDKFuncs.so ../Code/JavaWrappers/csharp_wrapper/RDKit2DotNet.dll {{ IMAGE }}
       args:
-        chdir: "./src/rdkit-Release_{{ RDKIT_RELEASE }}/build"
+        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}/build"
     when: libGraphMolWrap.stat.exists == false
