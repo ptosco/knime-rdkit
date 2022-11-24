@@ -81,7 +81,9 @@
       ansible.builtin.shell: if [ ! -e pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz ] || \
           [ `shasum -q pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz` != {{ PKFCONFIG_CHKSUM }} ]; then \
           rm -f pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz; \
-          curl -L -O http://pkgconfig.freedesktop.org/releases/pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz; \
+          curl -L -O http://pkgconfig.freedesktop.org/releases/pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz && \
+            [ `shasum -q pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz` = {{ PKFCONFIG_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download pkg-config" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/pkgconfig"
@@ -115,7 +117,9 @@
       ansible.builtin.shell: if [ ! -e zlib-{{ ZLIB_VERSION }}.tar.gz ] || \
           [ `md5 -q zlib-{{ ZLIB_VERSION }}.tar.gz` != {{ ZLIB_CHKSUM }} ]; then \
           rm -f zlib-{{ ZLIB_VERSION }}.tar.gz; \
-          curl -L -O https://zlib.net/zlib-{{ ZLIB_VERSION }}.tar.gz; \
+          curl -L -O https://zlib.net/zlib-{{ ZLIB_VERSION }}.tar.gz && \
+            [ `md5 -q zlib-{{ ZLIB_VERSION }}.tar.gz` = {{ ZLIB_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download zlib" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/zlib"
@@ -147,7 +151,9 @@
       ansible.builtin.shell: if [ ! -e bzip2-{{ BZIP2_VERSION }}.tar.gz ] || \
           [ `md5 -q bzip2-{{ BZIP2_VERSION }}.tar.gz` != BZIP2_CHKSUM ]; then \
           rm -f bzip2-{{ BZIP2_VERSION }}.tar.gz; \
-          curl -L -O https://sourceware.org/pub/bzip2/bzip2-{{ BZIP2_VERSION }}.tar.gz; \
+          curl -L -O https://sourceware.org/pub/bzip2/bzip2-{{ BZIP2_VERSION }}.tar.gz && \
+            [ `md5 -q bzip2-{{ BZIP2_VERSION }}.tar.gz` = BZIP2_CHKSUM ] || \
+            ( >&2 echo "Failed to download bzip2" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/bzip2"
@@ -176,7 +182,9 @@
       ansible.builtin.shell: if [ ! -e boost_{{ BOOST_VERSION }}.tar.bz2 ] || \
           [ `md5 -q boost_{{ BOOST_VERSION }}.tar.bz2` != {{ BOOST_CHKSUM }} ]; then \
           rm -f boost_{{ BOOST_VERSION }}.tar.bz2; \
-          curl -L -O https://boostorg.jfrog.io/artifactory/main/release/`echo {{ BOOST_VERSION }} | sed "s|_|.|g"`/source/boost_{{ BOOST_VERSION }}.tar.bz2; \
+          curl -L -O https://boostorg.jfrog.io/artifactory/main/release/`echo {{ BOOST_VERSION }} | sed "s|_|.|g"`/source/boost_{{ BOOST_VERSION }}.tar.bz2 && \
+            [ `md5 -q boost_{{ BOOST_VERSION }}.tar.bz2` = {{ BOOST_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download boost" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/boost"
@@ -215,7 +223,9 @@
       ansible.builtin.shell: if [ ! -e cmake-{{ CMAKE_VERSION }}.tar.gz ] || \
           [ `md5 -q cmake-{{ CMAKE_VERSION }}.tar.gz` != {{ CMAKE_CHKSUM }} ]; then \
           rm -f cmake-{{ CMAKE_VERSION }}.tar.gz; \
-          curl -L -O https://github.com/Kitware/CMake/releases/download/v{{ CMAKE_VERSION }}/cmake-{{ CMAKE_VERSION }}.tar.gz; \
+          curl -L -O https://github.com/Kitware/CMake/releases/download/v{{ CMAKE_VERSION }}/cmake-{{ CMAKE_VERSION }}.tar.gz && \
+            [ `md5 -q cmake-{{ CMAKE_VERSION }}.tar.gz` = {{ CMAKE_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download cmake" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/cmake"
@@ -225,7 +235,7 @@
       args:
         chdir: "{{ WORK }}/cmake"
 
-    - name: bootsrap cmake
+    - name: bootstrap cmake
       ansible.builtin.shell: MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" \
         ./bootstrap --prefix={{ DEPS }} --parallel={{ BUILD_CONCURRENCY }}
       args:
@@ -250,7 +260,9 @@
       ansible.builtin.shell: if [ ! -e eigen-{{ EIGEN_VERSION }}.tar.bz2 ] || \
           [ `md5 -q eigen-{{ EIGEN_VERSION }}.tar.bz2` != {{ EIGEN_CHKSUM }} ]; then \
           rm -f eigen-{{ EIGEN_VERSION }}.tar.bz2; \
-          curl -L -O https://gitlab.com/libeigen/eigen/-/archive/{{ EIGEN_VERSION }}/eigen-{{ EIGEN_VERSION }}.tar.bz2; \
+          curl -L -O https://gitlab.com/libeigen/eigen/-/archive/{{ EIGEN_VERSION }}/eigen-{{ EIGEN_VERSION }}.tar.bz2 && \
+            [ `md5 -q eigen-{{ EIGEN_VERSION }}.tar.bz2` = {{ EIGEN_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download eigen" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/eigen"
@@ -269,7 +281,7 @@
     - name: build eigen
       ansible.builtin.shell: MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" make -j{{ BUILD_CONCURRENCY }} install
       args:
-        chdir: "{{ WORK }}/eigen/eigen-{{ EIGEN_VERSION }}"
+        chdir: "{{ WORK }}/eigen/eigen-{{ EIGEN_VERSION }}/build"
     when: eigen_headers.stat.exists == false
 
   - name: does PCRE exist?
@@ -360,7 +372,9 @@
       ansible.builtin.shell: if [ ! -e freetype-{{ FREETYPE_VERSION }}.tar.gz ] || \
           [ `md5 -q freetype-{{ FREETYPE_VERSION }}.tar.gz` != {{ FREETYPE_CHKSUM }} ]; then \
           rm -f freetype-{{ FREETYPE_VERSION }}.tar.gz; \
-          curl -L -O https://download.savannah.gnu.org/releases/freetype/freetype-{{ FREETYPE_VERSION }}.tar.gz; \
+          curl -L -O https://download.savannah.gnu.org/releases/freetype/freetype-{{ FREETYPE_VERSION }}.tar.gz && \
+            [ `md5 -q freetype-{{ FREETYPE_VERSION }}.tar.gz` = {{ FREETYPE_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download freetype" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/freetype"
@@ -434,7 +448,9 @@
       ansible.builtin.shell: if [ ! -e pixman-{{ PIXMAN_VERSION }}.tar.gz ] || \
           [ `md5 -q pixman-{{ PIXMAN_VERSION }}.tar.gz` != {{ PIXMAN_CHKSUM }} ]; then \
           rm -f pixman-{{ PIXMAN_VERSION }}.tar.gz; \
-          curl -L -O https://www.cairographics.org/releases/pixman-{{ PIXMAN_VERSION }}.tar.gz; \
+          curl -L -O https://www.cairographics.org/releases/pixman-{{ PIXMAN_VERSION }}.tar.gz && \
+            [ `md5 -q pixman-{{ PIXMAN_VERSION }}.tar.gz` = {{ PIXMAN_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download pixman" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/cairo"
@@ -469,7 +485,9 @@
       ansible.builtin.shell: if [ ! -e cairo-{{ CAIRO_VERSION }}.tar.xz ] || \
           [ `md5 -q cairo-{{ CAIRO_VERSION }}.tar.xz` != {{ CAIRO_CHKSUM }} ]; then \
           rm -f cairo-{{ CAIRO_VERSION }}.tar.xz; \
-          curl -L -O https://www.cairographics.org/releases/cairo-{{ CAIRO_VERSION }}.tar.xz; \
+          curl -L -O https://www.cairographics.org/releases/cairo-{{ CAIRO_VERSION }}.tar.xz && \
+            [ `md5 -q cairo-{{ CAIRO_VERSION }}.tar.xz` = {{ CAIRO_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download cairo" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/cairo"
@@ -506,7 +524,9 @@
       ansible.builtin.shell: if [ ! -e OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz ] || \
           [ `shasum -a 256 OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz` != {{ OPENJDK8_CHKSUM }} ]; then \
           rm -f OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz; \
-          curl -L -O https://github.com/adoptium/temurin8-binaries/releases/download/{{ OPENJDK8_VERSION }}/OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz; \
+          curl -L -O https://github.com/adoptium/temurin8-binaries/releases/download/{{ OPENJDK8_VERSION }}/OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz && \
+            [ `shasum -a 256 OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz` = {{ OPENJDK8_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download OpenJDK8" && exit 1 ); \
         fi
       args:
         chdir: "{{ DEPS }}/openjdk8"
@@ -528,7 +548,9 @@
       ansible.builtin.shell: if [ ! -e mono-{{ MONO_VERSION }}.tar.xz ] || \
           [ `md5 -q mono-{{ MONO_VERSION }}.tar.xz` != {{ MONO_CHKSUM }} ]; then \
           rm -f mono-{{ MONO_VERSION }}.tar.xz; \
-          curl -L -O https://download.mono-project.com/sources/mono/mono-{{ MONO_VERSION }}.tar.xz; \
+          curl -L -O https://download.mono-project.com/sources/mono/mono-{{ MONO_VERSION }}.tar.xz && \
+            [ `md5 -q mono-{{ MONO_VERSION }}.tar.xz` = {{ MONO_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download Mono" && exit 1 ); \
         fi
       args:
         chdir: "{{ WORK }}/mono"
@@ -583,7 +605,9 @@
       ansible.builtin.shell: if [ ! -e "Release_{{ RDKIT_RELEASE }}.tar.gz" ] || \
           [ `md5 -q "Release_{{ RDKIT_RELEASE }}.tar.gz"` != {{ RDKIT_CHKSUM }} ]; then \
           rm -f "Release_{{ RDKIT_RELEASE }}.tar.gz"; \
-          curl -L -O "https://github.com/rdkit/rdkit/archive/refs/tags/Release_{{ RDKIT_RELEASE }}.tar.gz"; \
+          curl -L -O "https://github.com/rdkit/rdkit/archive/refs/tags/Release_{{ RDKIT_RELEASE }}.tar.gz" && \
+            [ `md5 -q "Release_{{ RDKIT_RELEASE }}.tar.gz"` = {{ RDKIT_CHKSUM }} ] || \
+            ( >&2 echo "Failed to download RDKit" && exit 1 ); \
         fi
       args:
         chdir: "{{ SRC }}"
