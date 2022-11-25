@@ -9,8 +9,8 @@
     MIN_MACOS_VERSION: "10.10"
     ARCH: "x86_64"
     BUILD_TARGET: "-mmacosx-version-min={{ MIN_MACOS_VERSION }} -arch {{ ARCH }}"
-    RDKIT_RELEASE: "2022_09_1"
-    RDKIT_CHKSUM: "5772bd0a9815ca00538f3d4843c725b6"
+    RDKIT_RELEASE: "2022_09_2"
+    RDKIT_CHKSUM: "052d9eae42da57d5af91e9d06d3b4de1"
     PKGCONFIG_VERSION: "0.29.2"
     PKFCONFIG_CHKSUM: "76e501663b29cb7580245720edfb6106164fad2b2e5d3d3763c88a5a"
     ZLIB_VERSION: "1.2.13"
@@ -621,7 +621,7 @@
       ansible.builtin.shell: sed -i ".orig" "s|#if _MSC_VER|#ifdef _WIN32|" Code/GraphMol/catch_chirality.cpp && \
         sed -i ".orig" "s|Windows\.h|windows.h|" Code/GraphMol/MMPA/MMPA_UnitTest.cpp && \
         sed -i ".orig" -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Cairo::Cairo\)|\1target_include_directories(MolDraw2D PUBLIC {{ DEPS }}/include/cairo)\n\1\2 {{ DEPS }}/lib/libcairo.a {{ DEPS }}/lib/libpixman-1.a {{ DEPS }}/lib/libpng16.a \"-framework CoreFoundation\" \"-framework CoreGraphics\"|" \
-          -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Freetype::Freetype\)|\1target_include_directories(MolDraw2D PUBLIC {{ DEPS }}/include/freetype2)\n\1\2 {{ DEPS }}/lib/libfreetype.a {{ DEPS }}/lib/libz.a {{ DEPS }}/lib/libbz2.a|" \
+          -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(.*\)\()\)|\1\2\3 {{ DEPS }}/lib/libz.a {{ DEPS }}/lib/libbz2.a\4|" \
           Code/GraphMol/MolDraw2D/CMakeLists.txt && \
         sed -i ".orig" -e "s|if(WIN32)|if(FALSE)|" \
           -e "s|\(SWIG_LINK_LIBRARIES *( *\)\(GraphMolWrap *\)\(\${RDKit_Wrapper_Libs}\)|\1\2\3 {{ DEPS }}/lib/libz.a {{ DEPS }}/lib/libbz2.a {{ DEPS }}/lib/libpixman-1.a {{ DEPS }}/lib/libpng16.a \"-framework CoreFoundation\" \"-framework CoreGraphics\"|" \
@@ -633,10 +633,17 @@
       args:
         chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
-    - name: patch Avalon 2.0.3
+    - name: update Avalon to 2.0.3
       ansible.builtin.shell: sed -i ".orig" -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.3\")|" \
         -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"89e083c3c021baec77a2b85a641c86dd\")|" \
         External/AvalonTools/CMakeLists.txt
+      args:
+        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
+
+    - name: patch Avalon 2.0.3
+      ansible.builtin.shell: curl -L -O https://github.com/rohdebe1/ava-formake/archive/refs/tags/AvalonToolkit_2.0.3.tar.gz && \
+        tar xzf AvalonToolkit_2.0.3.tar.gz && cd External/AvalonTools && \
+        patch -p0 < {{ playbook_dir }}/avalon203_patch.diff
       args:
         chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
