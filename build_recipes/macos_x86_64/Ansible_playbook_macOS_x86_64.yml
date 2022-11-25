@@ -633,19 +633,12 @@
       args:
         chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
-    - name: update Avalon to 2.0.3
-      ansible.builtin.shell: sed -i ".orig" -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.3\")|" \
-        -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"89e083c3c021baec77a2b85a641c86dd\")|" \
+    - name: update Avalon to 2.0.4a
+      ansible.builtin.shell: sed -i ".orig" -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.4\")|" \
+        -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"8e0fdedce0d93bdbc1e3c6ab3ae5c6cf\")|" \
         External/AvalonTools/CMakeLists.txt
       args:
         chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
-
-    - name: patch Avalon 2.0.3
-      ansible.builtin.shell: curl -L -O https://github.com/rohdebe1/ava-formake/archive/refs/tags/AvalonToolkit_2.0.3.tar.gz && \
-        tar xzf AvalonToolkit_2.0.3.tar.gz && \
-        patch -p0 < {{ playbook_dir }}/avalon203_patch.diff
-      args:
-        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}/External/AvalonTools"
 
     - name: create build sub-directory
       ansible.builtin.shell: mkdir -p build

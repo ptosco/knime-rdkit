@@ -189,16 +189,10 @@ RUN sed -i -e "s|if(WIN32)|if(FALSE)|" \
 RUN sed -i "s|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ \3 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libz.a ${DEPS}/lib/libbz2.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
     Code/JavaWrappers/csharp_wrapper/CMakeLists.txt
 
-# Patch for Avalon 2.0.3
-RUN sed -i -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.3\")|" \
-    -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"89e083c3c021baec77a2b85a641c86dd\")|" \
+# Patch for Avalon 2.0.4a
+RUN sed -i -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.4a\")|" \
+    -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"8e0fdedce0d93bdbc1e3c6ab3ae5c6cf\")|" \
     External/AvalonTools/CMakeLists.txt
-COPY --chown=docker:docker avalon203_patch.diff ${SRC}/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
-WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
-RUN curl -L -O https://github.com/rohdebe1/ava-formake/archive/refs/tags/AvalonToolkit_2.0.3.tar.gz
-RUN tar xzf AvalonToolkit_2.0.3.tar.gz
-RUN patch -p0 < avalon203_patch.diff
-WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}
 
 # Patch for SWIG loggers
 RUN sed -i "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/gmwrapper/GraphMolJava.i
