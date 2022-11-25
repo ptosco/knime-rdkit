@@ -1,0 +1,324 @@
+diff -Naur ava-formake-AvalonToolkit_2.0.3/src/main/C/common/canonizer.c ava-formake-AvalonToolkit_2.0.3/src/main/C/common/canonizer.c
+--- ava-formake-AvalonToolkit_2.0.3/src/main/C/common/canonizer.c	2022-11-25 09:26:08.135278590 +0100
++++ ava-formake-AvalonToolkit_2.0.3/src/main/C/common/canonizer.c	2022-11-25 09:27:14.125275753 +0100
+@@ -1166,8 +1166,8 @@
+ {
+    char *smiles, *tmp;
+ 
+-if (insmiles)
+-// fprintf(stderr, "CanSmiles: insmiles = '%s'\n\n", insmiles);
++   if (insmiles == NULL) return (NULL);
++   // fprintf(stderr, "CanSmiles: insmiles = '%s'\n\n", insmiles);
+    smiles = CanSmilesStep(insmiles, flags);
+    if (smiles == NULL) return (NULL);
+ // fprintf(stderr, "CanSmiles: smiles = '%s'\n\n", smiles);
+diff -Naur ava-formake-AvalonToolkit_2.0.3/src/main/C/common/reaccsio.c ava-formake-AvalonToolkit_2.0.3/src/main/C/common/reaccsio.c
+--- ava-formake-AvalonToolkit_2.0.3/src/main/C/common/reaccsio.c	2022-11-25 09:26:08.135278590 +0100
++++ ava-formake-AvalonToolkit_2.0.3/src/main/C/common/reaccsio.c	2022-11-25 09:26:51.472276727 +0100
+@@ -44,6 +44,10 @@
+ /*                                                                      */
+ /************************************************************************/
+ 
++#ifdef _WIN32
++#include <objbase.h>
++#endif
++
+ #include "reaccsio.h"
+ 
+ #include <stdio.h>
+@@ -1366,7 +1370,7 @@
+ 
+ #define MAXLINE 300
+ 
+-static char * ReadFile(FILE *fp)
++static char * _ReadFile(FILE *fp)
+ /*
+  * Read the file into a string
+  * the returned string should be free()ed if not NULL
+@@ -1434,12 +1438,28 @@
+  */
+ {
+    FILE *fp;
+-   size_t bufsize;
+    char * MolStr;
++#ifndef _WIN32
++   size_t bufsize;
++#else
++   wchar_t *tmpdir = NULL;
++   int guid_string_buf_size = 0;
++   size_t tmpfilename_buf_size = 0;
++   wchar_t *tmpfilename_buf = NULL;
++   int guid_string_len = 0;
++   int swprintf_res;
++   int remove_res;
++   const int GUID_STRING_SIZE_INCR = 64;
++   const int GUID_STRING_MAX_SIZE = GUID_STRING_SIZE_INCR * 10;
++   const wchar_t *AVATMP_PREFIX = L"avatmp_";
++   GUID guid;
++   wchar_t *guid_string = NULL;
++   HRESULT guid_res;
++#endif
+ 
+    if (IsNULL(mp)) return NULL;
++#ifndef _WIN32
+    bufsize = 5*80 + mp->n_atoms*80 + mp->n_bonds*80 + mp->n_props*80;
+-
+    fp = fmemopen(NULL, bufsize, "w+");
+    /* File could not be created => log an error and return NULL */
+    if (IsNULL(fp))
+@@ -1448,14 +1468,83 @@
+       AddMsgToList(msg_buffer);
+       return NULL;
+    }
+-
++#else
++   tmpdir = _wgetenv(L"TMP");
++   if (!tmpdir)
++   {
++      AddMsgToList("Could not retrieve TMP environment variable");
++      return NULL;
++   }
++   guid_res = CoCreateGuid(&guid);
++   if (guid_res != S_OK)
++   {
++      sprintf(msg_buffer, "Could not create tempfile GUID; error code: %d", guid_res);
++      AddMsgToList(msg_buffer);
++      return NULL;
++   }
++   while (guid_string_buf_size < GUID_STRING_MAX_SIZE
++      && !(guid_string_len = StringFromGUID2(&guid, guid_string, guid_string_buf_size)))
++   {
++      guid_string_buf_size += GUID_STRING_SIZE_INCR;
++      guid_string = (wchar_t *)realloc(guid_string, guid_string_buf_size * sizeof(wchar_t));
++      if (!guid_string)
++      {
++         AddMsgToList("Could not allocate guid_string");
++         return NULL;
++      }
++   }
++   if (!guid_string_len)
++   {
++      AddMsgToList("Could not convert GUID to string");
++      return NULL;
++   }
++   tmpfilename_buf_size = guid_string_len + wcslen(tmpdir) + wcslen(AVATMP_PREFIX) + 1;
++   tmpfilename_buf = (wchar_t *)malloc((tmpfilename_buf_size + 2) * sizeof(wchar_t));
++   if (!tmpfilename_buf)
++   {
++      free(guid_string);
++      guid_string = NULL;
++      AddMsgToList("Could not allocate tmpfilename_buf");
++      return NULL;
++   }
++   swprintf_res = swprintf_s(tmpfilename_buf, tmpfilename_buf_size, L"%s\\%s%s", tmpdir, AVATMP_PREFIX, guid_string);
++   free(guid_string);
++   guid_string = NULL;
++   if (swprintf_res == -1)
++   {
++      free(tmpfilename_buf);
++      tmpfilename_buf = NULL;
++      AddMsgToList("Could not create temporary filename");
++      return NULL;
++   }
++   fp = _wfopen(tmpfilename_buf, L"w+");
++   /* File could not be created => log an error and return NULL */
++   if (IsNULL(fp))
++   {
++      free(tmpfilename_buf);
++      tmpfilename_buf = NULL;
++      AddMsgToList("Could not open temporary file");
++      return NULL;
++   }
++#endif
+    PrintREACCSMolecule(fp, mp,"");
+ 
+    rewind(fp);
+ 
+-   MolStr = ReadFile(fp);
++   MolStr = _ReadFile(fp);
+    fclose(fp);
+ 
++#ifdef _WIN32
++   remove_res = _wremove(tmpfilename_buf);
++   free(tmpfilename_buf);
++   tmpfilename_buf = NULL;
++   if (remove_res == -1)
++   {
++      AddMsgToList("Could not delete temporary file");
++      return NULL;
++   }
++#endif
++
+    if (MolStr == NULL)
+       AddMsgToList("PrintREACCSMolecule did return NULL");
+ 
+@@ -1490,7 +1579,7 @@
+ 
+    rewind(fp);
+ 
+-   MolStr = ReadFile(fp);
++   MolStr = _ReadFile(fp);
+    fclose(fp);
+    if (!IsNULL(tempfile))   // tmpfile() did work => remove the file after use
+    {
+diff -Naur ava-formake-AvalonToolkit_2.0.3/src/main/C/programs/struchk.c ava-formake-AvalonToolkit_2.0.3/src/main/C/programs/struchk.c
+--- ava-formake-AvalonToolkit_2.0.3/src/main/C/programs/struchk.c	2022-11-25 09:26:08.137278590 +0100
++++ ava-formake-AvalonToolkit_2.0.3/src/main/C/programs/struchk.c	2022-11-25 09:27:02.133276268 +0100
+@@ -74,6 +74,8 @@
+ 
+ #include "struchk.h"
+ 
++#define MAX_OPT  100
++
+ // FILE *log_file;
+ // FILE *aa_log;
+ 
+@@ -1449,11 +1451,11 @@
+  */
+ int InitCheckMol(char *opt)
+ {
+-   char *argv[100];   // up to 100 option strings
++   char *argv[MAX_OPT];   // up to MAX_OPT option strings
+    char *cp;
+    int argc=0;
+    int flags;
+-   int hasCRLF, hasQuote, wordInLine, eolFound;
++   int hasCRLF, hasQuote, wordInLine, eolFound, eosFound;
+ 
+    dontExit = TRUE;
+    if (IsNULL(opt)) return 0;
+@@ -1482,25 +1484,26 @@
+           wordInLine++;
+           for (cp = opt; cp[0] != '"'  &&  cp[0] != '\0'; cp++)
+               ;
++          eosFound =  (cp[0] == '\0');
+           cp[0] = '\0';
+-// fprintf(stderr, "argv[%d] = '%s'\n", argc, opt);
++       // fprintf(stderr, "1) argv[%d] = '%s'\n", argc, opt);
+           argv[argc++] = opt;
+-          opt = cp+1;
++          if (!eosFound) opt = cp+1;
+       }
+-      else
++      else if (opt[0] != '\0')
+       {
+           wordInLine++;
+           for (cp = opt; !isspace(cp[0])  &&  cp[0] != '\0'; cp++)
+-          {
+-              if (cp[0] == '\r' ||  cp[0] == '\n') eolFound = TRUE;
+-          }
++              ;
++          eosFound =  (cp[0] == '\0');
+           if (cp[0] == '\r' ||  cp[0] == '\n') eolFound = TRUE;
++
+           cp[0] = '\0';
+-// fprintf(stderr, "argv[%d] = '%s'\n", argc, opt);
++       // fprintf(stderr, "2) argv[%d] = '%s'\n", argc, opt);
+           argv[argc++] = opt;
+-          opt = cp+1;
++          if (!eosFound) opt = cp+1;
+       }
+-      if (wordInLine >= 2  &&  hasCRLF  &&  !eolFound)     // skip to after EOL
++      if (wordInLine == 2  &&  hasCRLF  &&  !eolFound)     // skip to after EOL
+       {
+           while (opt[0] != '\0'  &&  opt[0] != '\r' &&  opt[0] != '\n')
+               opt++;
+@@ -1512,7 +1515,7 @@
+       {
+           wordInLine = 0;
+       }
+-   } while (opt[0]);
++   } while (argc < MAX_OPT && opt[0]);
+    flags = Initialize((FILE *)NULL, argc, argv);
+ 
+    return (flags);
+@@ -1520,7 +1523,7 @@
+ 
+ int _InitCheckMol_(char *opt)
+ {
+-   char **argv;   // up to 100 option strings
++   char **argv;   // up to MAX_OPT option strings
+    char *arg, *tmp;
+    int i, argc;
+    int flags;
+--- AvalonTools.cpp	2022-11-25 09:38:35.501279462 +0100
++++ AvalonTools.cpp	2022-11-25 09:38:54.807279632 +0100
+@@ -349,7 +349,7 @@
+     reaccsToCounts(mp, res, bitFlags, isQuery, nBits);
+     FreeMolecule(mp);
+   } else {
+-    BOOST_LOG(rdErrorLog) << "ERROR: no fingeprint generated for molecule."
++    BOOST_LOG(rdErrorLog) << "ERROR: no fingerprint generated for molecule."
+                           << std::endl;
+   }
+ }
+@@ -368,7 +368,7 @@
+     reaccsToFingerprint(mp, res, bitFlags, isQuery, resetVect, nBytes);
+     FreeMolecule(mp);
+   } else {
+-    BOOST_LOG(rdErrorLog) << "ERROR: no fingeprint generated for molecule."
++    BOOST_LOG(rdErrorLog) << "ERROR: no fingerprint generated for molecule."
+                           << std::endl;
+   }
+ }
+@@ -387,7 +387,7 @@
+     reaccsToFingerprint(mp, res, bitFlags, isQuery, resetVect, nBytes);
+     FreeMolecule(mp);
+   } else {
+-    BOOST_LOG(rdErrorLog) << "ERROR: no fingeprint generated for molecule."
++    BOOST_LOG(rdErrorLog) << "ERROR: no fingerprint generated for molecule."
+                           << std::endl;
+   }
+ }
+@@ -438,8 +438,8 @@
+   // n.b. always add a cr to the end for safety
+   auto *optBuffer = new char[optString.size() + 2];
+   optString.copy(optBuffer, optString.size());
+-  optBuffer[optString.size() - 1] = '\n';
+-  optBuffer[optString.size()] = '\0';
++  optBuffer[optString.size()] = '\n';
++  optBuffer[optString.size() + 1] = '\0';
+   int res = InitCheckMol(optBuffer);
+   delete[] optBuffer;
+   return res;
+--- test1.cpp	2022-11-25 09:41:09.230279853 +0100
++++ test1.cpp	2022-11-25 09:41:20.393279373 +0100
+@@ -529,6 +529,30 @@
+   TEST_ASSERT(res.empty());
+ }
+ 
++void testBigMoleculeNoNewlineInInitString() {
++    BOOST_LOG(rdInfoLog) << "testing molecule with >150 atoms when "
++                            "init string has no newline"
++                       << std::endl;
++    std::string pathName = getenv("RDBASE");
++    pathName += "/Data/struchk/";
++    std::stringstream struchk_init;
++    struchk_init << "-ta " << pathName << "checkfgs.trn\n"
++        << "-tm\n"
++        "-or\n"
++        "-ca " << pathName << "checkfgs.chk\n"
++        << "-cc\n"
++        "-cl 3\n"
++        "-cs\n"
++        "-cn 999";
++    int errs = AvalonTools::initCheckMol(struchk_init.str());
++    TEST_ASSERT(!errs);
++    std::string bigMol =
++        "CC(C)CC(C(=O)NC(CCSC)C(=O)NC(CC(=O)N)C(=O)NC(C(C)O)C(=O)O)NC(=O)C(CC1=CNC2=CC=CC=C21)NC(=O)C(CCC(=O)N)NC(=O)C(C(C)C)NC(=O)C(CC3=CC=CC=C3)NC(=O)C(CC(=O)O)NC(=O)C(CCC(=O)N)NC(=O)C(C)NC(=O)C(CCCNC(=N)N)NC(=O)C(CCCNC(=N)N)NC(=O)C(CO)NC(=O)C(CC(=O)O)NC(=O)C(CC(C)C)NC(=O)C(CC4=CC=C(C=C4)O)NC(=O)C(CCCCN)NC(=O)C(CO)NC(=O)C(CC5=CC=C(C=C5)O)NC(=O)C(CC(=O)O)NC(=O)C(CO)NC(=O)C(C(C)O)NC(=O)C(CC6=CC=CC=C6)NC(=O)C(C(C)O)NC(=O)CNC(=O)C(CCC(=O)N)NC(=O)C(CO)NC(=O)C(CC7=CN=CN7)N";
++    RDKit::ROMOL_SPTR m = AvalonTools::checkMol(errs, bigMol, true);
++    AvalonTools::closeCheckMolFiles();
++    TEST_ASSERT(errs == 0);
++}
++
+ int main() {
+   RDLog::InitLogs();
+ #if 1
+@@ -549,6 +573,7 @@
+   testGithub4075();
+   testGithub4330();
+   testNoAtomCTAB();
++  testBigMoleculeNoNewlineInInitString();
+ 
+   return 0;
+ }

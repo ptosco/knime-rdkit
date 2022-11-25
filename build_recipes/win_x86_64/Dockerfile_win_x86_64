@@ -1,38 +1,37 @@
 
 # To build an image with this Dockerfile:
-# docker build -t rdkit-knime-win -f Dockerfile_win_x86_64 --network=host $@ .
+# docker build -t rdkit-knime-win-x86_64 -f Dockerfile_win_x86_64 --network=host $@ .
 
 # To run bash in the built image mounting a local dir inside the container:
-# mkdir -p ../knime_dlls && docker run -u root --network=host --mount type=bind,source="$(pwd)/.."/knime_dlls,target=/knime_dlls -it rdkit-knime-win:latest bash
+# mkdir -p knime_dlls && docker run -u root --network=host --mount type=bind,source="$(pwd)/knime_dlls,target=/knime_dlls -it rdkit-knime-win:latest bash
 
 FROM fedora:36 AS GCC_TOOL_CHAIN
 
 USER root
 
-# Set NIBR proxy
-ARG http_proxy=http://nibr-proxy.global.nibr.novartis.net:2011/
-ARG https_proxy=http://nibr-proxy.global.nibr.novartis.net:2011/
-ENV http_proxy=${http_proxy}
-ENV https_proxy=${https_proxy}
-
-# Add Novartis SSL certs otherwise HTTPS will not work
-COPY certs /etc/pki/ca-trust/source/anchors/
-RUN update-ca-trust extract
-
 ARG BUILD_CONCURRENCY="6"
-ARG RDKIT_RELEASE="2022_09_1"
+ARG RDKIT_RELEASE="2022_09_2"
+ARG RDKIT_CHKSUM="052d9eae42da57d5af91e9d06d3b4de1"
 ARG ZLIB_VERSION="1.2.13"
+ARG ZLIB_CHKSUM="9b8aa094c4e5765dabf4da391f00d15c"
 ARG BZIP2_VERSION="1.0.8"
+ARG BZIP2_CHKSUM="67e051268d0c475ea773822f7500d0e5"
 ARG BOOST_VERSION="1_80_0"
+ARG BOOST_CHKSUM="df7dc2fc6de751753198a5bf70210da7"
 ARG CMAKE_VERSION="3.24.2"
+ARG CMAKE_CHKSUM="84d08f30b110401d8178f0708c19f1fe"
 ARG EIGEN_VERSION="3.4.0"
+ARG EIGEN_CHKSUM="132dde48fe2b563211675626d29f1707"
 ARG FREETYPE_VERSION="2.12.1"
+ARG FREETYPE_CHKSUM="8bc5c9c9df7ac12c504f8918552a7cf2"
 ARG SWIG_VERSION="3.0.12"
 ARG SWIG_CHKSUM="82133dfa7bba75ff9ad98a7046be687c"
 ARG LIBPNG_VERSION="1.6.38"
 ARG LIBPNG_CHKSUM="151d579116e601e393e780b7f46b2ff0"
 ARG PIXMAN_VERSION="0.42.0"
+ARG PIXMAN_CHKSUM="d925aa9e9ed9d419b6c2e02a61a11d29"
 ARG CAIRO_VERSION="1.16.0"
+ARG CAIRO_CHKSUM="f19e0353828269c22bd72e271243a552"
 ARG DEPS="/deps"
 ARG WORK="/work"
 ARG SRC="/src"
@@ -51,21 +50,27 @@ USER docker
 RUN mkdir -p ${WORK}/boost ${WORK}/cmake ${WORK}/eigen ${WORK}/zlib ${WORK}/bzip2 ${WORK}/freetype ${WORK}/swig ${WORK}/cairo
 
 WORKDIR ${WORK}/zlib
-RUN curl -L -O https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz
+RUN curl -L -O https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz && \
+    [ `md5sum zlib-${ZLIB_VERSION}.tar.gz | awk '{print $1}'` = ${ZLIB_CHKSUM} ] || \
+    ( >&2 echo "Failed to download zlib" && exit 1 )
 RUN tar xzf zlib-${ZLIB_VERSION}.tar.gz
 WORKDIR ${WORK}/zlib/zlib-${ZLIB_VERSION}
 RUN AR="x86_64-w64-mingw32-ar" CC="x86_64-w64-mingw32-gcc -fPIC" ./configure --static --64 --prefix=${DEPS}
 RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
 
 WORKDIR ${WORK}/bzip2
-RUN curl -L -O https://sourceware.org/pub/bzip2/bzip2-${BZIP2_VERSION}.tar.gz
+RUN curl -L -O https://sourceware.org/pub/bzip2/bzip2-${BZIP2_VERSION}.tar.gz && \
+    [ `md5sum bzip2-${BZIP2_VERSION}.tar.gz | awk '{print $1}'` = ${BZIP2_CHKSUM} ] || \
+    ( >&2 echo "Failed to download bzip2" && exit 1 )
 RUN tar xzf bzip2-${BZIP2_VERSION}.tar.gz
 WORKDIR ${WORK}/bzip2/bzip2-${BZIP2_VERSION}
 RUN make AR="x86_64-w64-mingw32-ar" CC="x86_64-w64-mingw32-gcc -fPIC" PREFIX=${DEPS} -j${BUILD_CONCURRENCY} libbz2.a
 RUN cp bzlib.h ${DEPS}/include && cp libbz2.a ${DEPS}/lib
 
 WORKDIR ${WORK}/boost
-RUN curl -L -O https://boostorg.jfrog.io/artifactory/main/release/`echo ${BOOST_VERSION} | sed "s|_|.|g"`/source/boost_${BOOST_VERSION}.tar.bz2
+RUN curl -L -O https://boostorg.jfrog.io/artifactory/main/release/`echo ${BOOST_VERSION} | sed "s|_|.|g"`/source/boost_${BOOST_VERSION}.tar.bz2 && \
+    [ `md5sum boost_${BOOST_VERSION}.tar.bz2 | awk '{print $1}'` = ${BOOST_CHKSUM} ] || \
+    ( >&2 echo "Failed to download boost" && exit 1 )
 RUN tar xjf boost_${BOOST_VERSION}.tar.bz2
 WORKDIR ${WORK}/boost/boost_${BOOST_VERSION}
 RUN echo 'using gcc : mingw : x86_64-w64-mingw32-g++ ;' > user-config.jam
@@ -80,14 +85,18 @@ RUN ./b2 --user-config=./user-config.jam toolset=gcc-mingw \
         cp -R stage/lib ${DEPS} && cp -R boost ${DEPS}/include
 
 WORKDIR ${WORK}/cmake
-RUN curl -L -O https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz
+RUN curl -L -O https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}.tar.gz && \
+    [ `md5sum cmake-${CMAKE_VERSION}.tar.gz | awk '{print $1}'` = ${CMAKE_CHKSUM} ] || \
+    ( >&2 echo "Failed to download cmake" && exit 1 )
 RUN tar xzf cmake-${CMAKE_VERSION}.tar.gz
 WORKDIR ${WORK}/cmake/cmake-${CMAKE_VERSION}
 RUN ./bootstrap --prefix=${DEPS} --parallel=${BUILD_CONCURRENCY}
 RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
 
 WORKDIR ${WORK}/eigen
-RUN curl -L -o eigen-${EIGEN_VERSION}.tar.bz2 https://gitlab.com/libeigen/eigen/-/archive/${EIGEN_VERSION}/eigen-${EIGEN_VERSION}.tar.bz2
+RUN curl -L -o eigen-${EIGEN_VERSION}.tar.bz2 https://gitlab.com/libeigen/eigen/-/archive/${EIGEN_VERSION}/eigen-${EIGEN_VERSION}.tar.bz2 && \
+    [ `md5sum eigen-${EIGEN_VERSION}.tar.bz2 | awk '{print $1}'` = ${EIGEN_CHKSUM} ] || \
+    ( >&2 echo "Failed to download eigen" && exit 1 )
 RUN tar xjf eigen-${EIGEN_VERSION}.tar.bz2
 WORKDIR ${WORK}/eigen/eigen-${EIGEN_VERSION}
 RUN mkdir build
@@ -111,11 +120,14 @@ RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
 
 RUN mkdir -p ${WORK}/freetype
 WORKDIR ${WORK}/freetype
-RUN curl -L -O https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz
+RUN curl -L -O https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz && \
+    [ `md5sum freetype-${FREETYPE_VERSION}.tar.gz | awk '{print $1}'` = ${FREETYPE_CHKSUM} ] || \
+    ( >&2 echo "Failed to download freetype" && exit 1 )
 RUN tar xzf freetype-${FREETYPE_VERSION}.tar.gz
 WORKDIR ${WORK}/freetype/freetype-${FREETYPE_VERSION}
-RUN CC="x86_64-w64-mingw32-gcc -fPIC" CXX="x86_64-w64-mingw32-g++ -fPIC" AR="x86_64-w64-mingw32-ar" \
-    PKG_CONFIG_PATH=${DEPS}/lib/pkgconfig \
+RUN CC="x86_64-w64-mingw32-gcc -fPIC -I${DEPS}/include" \
+    CXX="x86_64-w64-mingw32-g++ -fPIC -I${DEPS}/include" AR="x86_64-w64-mingw32-ar" \
+    LDFLAGS="-L${DEPS}/lib" PKG_CONFIG_PATH=${DEPS}/lib/pkgconfig \
     ./configure --host=x86_64-w64-mingw32 --build=x86_64-pc-linux-gnu \
     --enable-static=yes --enable-shared=no --prefix=${DEPS}
 RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
@@ -128,65 +140,73 @@ RUN for i in `seq 1 5`; do \
 RUN test -e libpng_md5_ok || ( >&2 echo "Failed to download libpng" && exit 1 )
 RUN tar xzf libpng-${LIBPNG_VERSION}.tar.gz
 WORKDIR ${WORK}/cairo/libpng-${LIBPNG_VERSION}
-RUN CC="x86_64-w64-mingw32-gcc -fPIC" AR="x86_64-w64-mingw32-ar" \
-    PKG_CONFIG_PATH=${DEPS}/lib/pkgconfig \
+RUN CC="x86_64-w64-mingw32-gcc -fPIC -I${DEPS}/include" AR="x86_64-w64-mingw32-ar" \
+    LDFLAGS="-L${DEPS}/lib" PKG_CONFIG_PATH=${DEPS}/lib/pkgconfig \
     ./configure --host=x86_64-w64-mingw32 --build=x86_64-pc-linux-gnu \
     --enable-shared=no --enable-static=yes --prefix=${DEPS}
 RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
 
 WORKDIR ${WORK}/cairo
-RUN curl -L -O https://www.cairographics.org/releases/pixman-${PIXMAN_VERSION}.tar.gz
+RUN curl -L -O https://www.cairographics.org/releases/pixman-${PIXMAN_VERSION}.tar.gz && \
+    [ `md5sum pixman-${PIXMAN_VERSION}.tar.gz | awk '{print $1}'` = ${PIXMAN_CHKSUM} ] || \
+    ( >&2 echo "Failed to download pixman" && exit 1 )
 RUN tar xzf pixman-${PIXMAN_VERSION}.tar.gz
 WORKDIR ${WORK}/cairo/pixman-${PIXMAN_VERSION}
-RUN CC="x86_64-w64-mingw32-gcc -fPIC" AR="x86_64-w64-mingw32-ar" \
-    PKG_CONFIG_PATH=${DEPS}/lib/pkgconfig \
+RUN CC="x86_64-w64-mingw32-gcc -fPIC -I${DEPS}/include" AR="x86_64-w64-mingw32-ar" \
+    LDFLAGS="-L${DEPS}/lib" PKG_CONFIG_PATH=${DEPS}/lib/pkgconfig \
     ./configure --host=x86_64-w64-mingw32 --build=x86_64-pc-linux-gnu \
     --enable-shared=no --enable-static=yes --prefix=${DEPS}
 RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
 
 WORKDIR ${WORK}/cairo
-RUN curl -L -O https://www.cairographics.org/releases/cairo-${CAIRO_VERSION}.tar.xz
+RUN curl -L -O https://www.cairographics.org/releases/cairo-${CAIRO_VERSION}.tar.xz && \
+    [ `md5sum cairo-${CAIRO_VERSION}.tar.xz | awk '{print $1}'` = ${CAIRO_CHKSUM} ] || \
+    ( >&2 echo "Failed to download cairo" && exit 1 )
 RUN tar xJf cairo-${CAIRO_VERSION}.tar.xz
 WORKDIR ${WORK}/cairo/cairo-${CAIRO_VERSION}
-RUN CC="x86_64-w64-mingw32-gcc -fPIC" CXX="x86_64-w64-mingw32-g++ -fPIC" AR="x86_64-w64-mingw32-ar" \
-    PKG_CONFIG_PATH=${DEPS}/lib/pkgconfig LDFLAGS="-Bstatic -lssp -Bdynamic" \
+RUN CC="x86_64-w64-mingw32-gcc -fPIC -I${DEPS}/include" \
+    CXX="x86_64-w64-mingw32-g++ -fPIC -I${DEPS}/include" AR="x86_64-w64-mingw32-ar" \
+    PKG_CONFIG_PATH=${DEPS}/lib/pkgconfig LDFLAGS="-L${DEPS}/lib -Bstatic -lssp -Bdynamic" \
     ./configure --host=x86_64-w64-mingw32 --build=x86_64-pc-linux-gnu \
     --enable-shared=no --enable-static=yes --prefix=${DEPS}
 RUN make -j${BUILD_CONCURRENCY} && make -j${BUILD_CONCURRENCY} install
 
 WORKDIR ${SRC}
-RUN curl -L -O https://github.com/rdkit/rdkit/archive/refs/tags/Release_${RDKIT_RELEASE}.tar.gz
+RUN curl -L -O https://github.com/rdkit/rdkit/archive/refs/tags/Release_${RDKIT_RELEASE}.tar.gz && \
+    [ `md5sum Release_${RDKIT_RELEASE}.tar.gz | awk '{print $1}'` = ${RDKIT_CHKSUM} ] || \
+    ( >&2 echo "Failed to download RDKit" && exit 1 )
 RUN tar xzf Release_${RDKIT_RELEASE}.tar.gz
 WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}
-RUN 
-COPY --chown=docker:docker win-x64.cmake ${SRC}/rdkit-Release_${RDKIT_RELEASE}/
+COPY --chown=docker:docker win-x86_64.cmake msvcr120.dll ${SRC}/rdkit-Release_${RDKIT_RELEASE}/
 RUN sed -i "s|#if _MSC_VER|#ifdef _WIN32|" Code/GraphMol/catch_chirality.cpp
 RUN sed -i "s|Windows\.h|windows.h|" Code/GraphMol/MMPA/MMPA_UnitTest.cpp
 RUN sed -i -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Cairo::Cairo\)|\1target_include_directories(MolDraw2D PUBLIC ${DEPS}/include/cairo)\n\1\2 ${DEPS}/lib/libcairo.a /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
-    -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Freetype::Freetype\)|\1target_include_directories(MolDraw2D PUBLIC ${DEPS}/include/freetype2)\n\1\2 ${DEPS}/lib/libfreetype.a ${DEPS}/lib/libz.a|" \
+    -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(.*\)\()\)|\1\2\3 ${DEPS}/lib/libz.a ${DEPS}/lib/libbz2.a\4|" \
     Code/GraphMol/MolDraw2D/CMakeLists.txt
 RUN sed -i -e "s|if(WIN32)|if(FALSE)|" \
-    -e "s|\(SWIG_LINK_LIBRARIES *( *\)\(GraphMolWrap *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ \3 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
+    -e "s|\(SWIG_LINK_LIBRARIES *( *\)\(GraphMolWrap *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ \3 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libz.a ${DEPS}/lib/libbz2.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
     Code/JavaWrappers/gmwrapper/CMakeLists.txt
-RUN sed -i "s|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ \3 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
+RUN sed -i "s|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ \3 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libz.a ${DEPS}/lib/libbz2.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
     Code/JavaWrappers/csharp_wrapper/CMakeLists.txt
+
 # Patch for Avalon 2.0.3
 RUN sed -i -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.3\")|" \
     -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"89e083c3c021baec77a2b85a641c86dd\")|" \
     External/AvalonTools/CMakeLists.txt
-RUN sed -i "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/gmwrapper/GraphMolJava.i
-RUN sed -i "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/csharp_wrapper/GraphMolCSharp.i
-# Begin patch for Avalon 2.0.3 on Windows
-COPY --chown=docker:docker avalon203_win32_patch.diff ${SRC}/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
+COPY --chown=docker:docker avalon203_patch.diff ${SRC}/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
 WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}/External/AvalonTools
 RUN curl -L -O https://github.com/rohdebe1/ava-formake/archive/refs/tags/AvalonToolkit_2.0.3.tar.gz
 RUN tar xzf AvalonToolkit_2.0.3.tar.gz
-RUN patch -p0 < avalon203_win32_patch.diff
+RUN patch -p0 < avalon203_patch.diff
 WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}
-# End patch for Avalon 2.0.3 on Windows
+
+# Patch for SWIG loggers
+RUN sed -i "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/gmwrapper/GraphMolJava.i
+RUN sed -i "s|^\(.include <RDGeneral/\)\(versions.h>\)|\1\2\n\1RDLog.h>|" Code/JavaWrappers/csharp_wrapper/GraphMolCSharp.i
+
 RUN mkdir build
 WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}/build
-RUN JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk \
+RUN export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk && \
     FREETYPE_DIR=${DEPS} ${DEPS}/bin/cmake \
     -D RDK_BUILD_INCHI_SUPPORT=ON \
     -D RDK_BUILD_AVALON_SUPPORT=ON \
@@ -220,7 +240,7 @@ RUN JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk \
     -D CAIRO_LIBRARY_DIR=${DEPS}/lib \
     -D MSVC_RUNTIME_DLL=$PWD/../msvcr120.dll \
     -D CMAKE_INSTALL_PREFIX=${IMAGE} \
-    -D CMAKE_TOOLCHAIN_FILE=$PWD/../win-x64.cmake \
+    -D CMAKE_TOOLCHAIN_FILE=$PWD/../win-x86_64.cmake \
     -D JAVA_AWT_LIBRARY="${JAVA_HOME}/lib/amd64/libjawt.so" \
     -D JAVA_JVM_LIBRARY="${JAVA_HOME}/jre/lib/amd64/server/libjvm.so" \
     -D JAVA_INCLUDE_PATH="${JAVA_HOME}/include" \
