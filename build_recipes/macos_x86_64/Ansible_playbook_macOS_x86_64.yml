@@ -642,10 +642,10 @@
 
     - name: patch Avalon 2.0.3
       ansible.builtin.shell: curl -L -O https://github.com/rohdebe1/ava-formake/archive/refs/tags/AvalonToolkit_2.0.3.tar.gz && \
-        tar xzf AvalonToolkit_2.0.3.tar.gz && cd External/AvalonTools && \
+        tar xzf AvalonToolkit_2.0.3.tar.gz && \
         patch -p0 < {{ playbook_dir }}/avalon203_patch.diff
       args:
-        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
+        chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}/External/AvalonTools"
 
     - name: create build sub-directory
       ansible.builtin.shell: mkdir -p build
