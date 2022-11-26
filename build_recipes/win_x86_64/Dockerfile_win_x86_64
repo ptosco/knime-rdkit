@@ -177,7 +177,7 @@ RUN curl -L -O https://github.com/rdkit/rdkit/archive/refs/tags/Release_${RDKIT_
     ( >&2 echo "Failed to download RDKit" && exit 1 )
 RUN tar xzf Release_${RDKIT_RELEASE}.tar.gz
 WORKDIR ${SRC}/rdkit-Release_${RDKIT_RELEASE}
-COPY --chown=docker:docker win-x86_64.cmake msvcr120.dll ${SRC}/rdkit-Release_${RDKIT_RELEASE}/
+COPY --chown=docker:docker win-x86_64.cmake ${SRC}/rdkit-Release_${RDKIT_RELEASE}/
 RUN sed -i "s|#if _MSC_VER|#ifdef _WIN32|" Code/GraphMol/catch_chirality.cpp
 RUN sed -i "s|Windows\.h|windows.h|" Code/GraphMol/MMPA/MMPA_UnitTest.cpp
 RUN sed -i -e "s|\( *\)\(target_link_libraries(MolDraw2D PUBLIC \)\(Cairo::Cairo\)|\1target_include_directories(MolDraw2D PUBLIC ${DEPS}/include/cairo)\n\1\2 ${DEPS}/lib/libcairo.a /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
@@ -188,6 +188,11 @@ RUN sed -i -e "s|if(WIN32)|if(FALSE)|" \
     Code/JavaWrappers/gmwrapper/CMakeLists.txt
 RUN sed -i "s|\(SWIG_LINK_LIBRARIES *( *\)\(RDKFuncs *\)\(\${RDKit_Wrapper_Libs}\)|\1\2-static -static-libgcc -static-libstdc++ \3 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libssp.a ${DEPS}/lib/libz.a ${DEPS}/lib/libbz2.a ${DEPS}/lib/libpixman-1.a ${DEPS}/lib/libpng16.a|" \
     Code/JavaWrappers/csharp_wrapper/CMakeLists.txt
+
+# Patch to remove the dependency on msvcrt120.dll
+RUN cp Code/RDGeneral/CMakeLists.txt Code/RDGeneral/CMakeLists.txt.orig && \
+    sed "/if(MINGW)/,/endif(MINGW)/d" < Code/RDGeneral/CMakeLists.txt.orig \
+    | sed "s| \${MSVC_RUNTIME_DLL}||" > Code/RDGeneral/CMakeLists.txt
 
 # Patch for Avalon 2.0.4a
 RUN sed -i -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.4a\")|" \
@@ -232,7 +237,6 @@ RUN export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk && \
     -D FREETYPE_INCLUDE_DIRS=${DEPS}/include/freetype2 \
     -D CAIRO_INCLUDE_DIR=${DEPS}/include/cairo \
     -D CAIRO_LIBRARY_DIR=${DEPS}/lib \
-    -D MSVC_RUNTIME_DLL=$PWD/../msvcr120.dll \
     -D CMAKE_INSTALL_PREFIX=${IMAGE} \
     -D CMAKE_TOOLCHAIN_FILE=$PWD/../win-x86_64.cmake \
     -D JAVA_AWT_LIBRARY="${JAVA_HOME}/lib/amd64/libjawt.so" \
