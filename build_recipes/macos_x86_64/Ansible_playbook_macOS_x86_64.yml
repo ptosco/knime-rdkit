@@ -6,13 +6,13 @@
   connection: local
   vars:
     BUILD_CONCURRENCY: 6
-    MIN_MACOS_VERSION: "10.10"
+    MIN_MACOS_VERSION: "10.13"
     ARCH: "x86_64"
     BUILD_TARGET: "-mmacosx-version-min={{ MIN_MACOS_VERSION }} -arch {{ ARCH }}"
     RDKIT_RELEASE: "2022_09_2"
     RDKIT_CHKSUM: "052d9eae42da57d5af91e9d06d3b4de1"
     PKGCONFIG_VERSION: "0.29.2"
-    PKFCONFIG_CHKSUM: "76e501663b29cb7580245720edfb6106164fad2b2e5d3d3763c88a5a"
+    PKGCONFIG_CHECKSUM: "76e501663b29cb7580245720edfb6106164fad2b"
     ZLIB_VERSION: "1.2.13"
     ZLIB_CHKSUM: "9b8aa094c4e5765dabf4da391f00d15c"
     BZIP2_VERSION: "1.0.8"
@@ -79,10 +79,10 @@
     block:
     - name: download pkg-config
       ansible.builtin.shell: if [ ! -e pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz ] || \
-          [ `shasum -q pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz` != {{ PKFCONFIG_CHKSUM }} ]; then \
+          [ `shasum pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz | awk "{print \\$1}"` != {{ PKGCONFIG_CHECKSUM }} ]; then \
           rm -f pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz; \
           curl -L -O http://pkgconfig.freedesktop.org/releases/pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz && \
-            [ `shasum -q pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz` = {{ PKFCONFIG_CHKSUM }} ] || \
+            [ `shasum pkg-config-{{ PKGCONFIG_VERSION }}.tar.gz | awk "{print \\$1}"` = {{ PKGCONFIG_CHECKSUM }} ] || \
             ( >&2 echo "Failed to download pkg-config" && exit 1 ); \
         fi
       args:
@@ -152,7 +152,7 @@
           [ `md5 -q bzip2-{{ BZIP2_VERSION }}.tar.gz` != BZIP2_CHKSUM ]; then \
           rm -f bzip2-{{ BZIP2_VERSION }}.tar.gz; \
           curl -L -O https://sourceware.org/pub/bzip2/bzip2-{{ BZIP2_VERSION }}.tar.gz && \
-            [ `md5 -q bzip2-{{ BZIP2_VERSION }}.tar.gz` = BZIP2_CHKSUM ] || \
+            [ `md5 -q bzip2-{{ BZIP2_VERSION }}.tar.gz` = {{ BZIP2_CHKSUM }} ] || \
             ( >&2 echo "Failed to download bzip2" && exit 1 ); \
         fi
       args:
@@ -522,10 +522,10 @@
     block:
     - name: download OpenJDK8
       ansible.builtin.shell: if [ ! -e OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz ] || \
-          [ `shasum -a 256 OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz` != {{ OPENJDK8_CHKSUM }} ]; then \
+          [ `shasum -a 256 OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz | awk "{print \\$1}"` != {{ OPENJDK8_CHKSUM }} ]; then \
           rm -f OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz; \
           curl -L -O https://github.com/adoptium/temurin8-binaries/releases/download/{{ OPENJDK8_VERSION }}/OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz && \
-            [ `shasum -a 256 OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz` = {{ OPENJDK8_CHKSUM }} ] || \
+            [ `shasum -a 256 OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz | awk "{print \\$1}"` = {{ OPENJDK8_CHKSUM }} ] || \
             ( >&2 echo "Failed to download OpenJDK8" && exit 1 ); \
         fi
       args:
@@ -570,9 +570,18 @@
       ansible.builtin.set_fact:
         build_host_var: "{{ build_host_reg.stdout }}"
 
+    - name: check if struct objc_super has super_class member
+      ansible.builtin.shell: sed -n "/^struct *objc_super *{/,/^}/p" < "{{ sdk_path_var }}/usr/include/objc/message.h" | \
+        grep -q "super_class;\$" && echo -DHAVE_OBJ_SUPER_SUPER_CLASS
+      register: have_obj_super_super_class_reg
+
+    - name: set have_obj_super_super_class var
+      ansible.builtin.set_fact:
+        have_obj_super_super_class_var: "{{ have_obj_super_super_class_reg.stdout }}"
+
     - name: configure Mono
-      ansible.builtin.shell: CXX="clang++ -DHAVE_OBJ_SUPER_SUPER_CLASS {{ BUILD_TARGET }} -I$PWD/external/bdwgc/libatomic_ops/src" \
-        CC="clang -DHAVE_OBJ_SUPER_SUPER_CLASS {{ BUILD_TARGET }} -I$PWD/external/bdwgc/libatomic_ops/src" \
+      ansible.builtin.shell: CXX="clang++ {{ have_obj_super_super_class_var }} {{ BUILD_TARGET }} -I$PWD/external/bdwgc/libatomic_ops/src" \
+        CC="clang {{ have_obj_super_super_class_var }}  {{ BUILD_TARGET }} -I$PWD/external/bdwgc/libatomic_ops/src" \
         PKG_CONFIG_PATH="{{ DEPS }}/lib/pkgconfig" MACOSX_DEPLOYMENT_TARGET="{{ MIN_MACOS_VERSION }}" ARCHS="{{ ARCH }}" PATH="{{ DEPS }}/bin:$PATH" \
         ./configure --disable-nls --prefix="{{ DEPS }}" --build="{{ build_host_var }}" --host="{{ build_host_var }}" --with-static-zlib="{{ DEPS }}/lib/libz.a"
       args:
@@ -634,7 +643,7 @@
         chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
     - name: update Avalon to 2.0.4a
-      ansible.builtin.shell: sed -i ".orig" -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.4\")|" \
+      ansible.builtin.shell: sed -i ".orig" -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.4a\")|" \
         -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"8e0fdedce0d93bdbc1e3c6ab3ae5c6cf\")|" \
         External/AvalonTools/CMakeLists.txt
       args:
@@ -680,6 +689,7 @@
           -D CAIRO_INCLUDE_DIR="{{ DEPS }}/include/cairo" \
           -D CAIRO_LIBRARY_DIR="{{ DEPS }}/lib" \
           -D CMAKE_INSTALL_PREFIX="{{ IMAGE }}" \
+          -D CMAKE_OSX_DEPLOYMENT_TARGET={{ MIN_MACOS_VERSION }} \
           -D CMAKE_OSX_ARCHITECTURES="{{ ARCH }}" \
           ..
       args:
