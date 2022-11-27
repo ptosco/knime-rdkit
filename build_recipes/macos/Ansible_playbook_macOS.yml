@@ -1,13 +1,13 @@
 # To build a SWIG RDKit libs Ansible playbook:
-# ansible-playbook --connection=local --inventory 127.0.0.1 --limit 127.0.0.1 Ansible_playbook_macOS_x86_64.yml
+# ansible-playbook --connection=local --inventory 127.0.0.1 --limit 127.0.0.1 Ansible_playbook_macOS_arm64.yml
 
 - name: Build RDKit SWIG DLLs
   hosts: localhost
   connection: local
+
   vars:
     BUILD_CONCURRENCY: 6
     MIN_MACOS_VERSION: "10.13"
-    ARCH: "x86_64"
     BUILD_TARGET: "-mmacosx-version-min={{ MIN_MACOS_VERSION }} -arch {{ ARCH }}"
     RDKIT_RELEASE: "2022_09_2"
     RDKIT_CHKSUM: "052d9eae42da57d5af91e9d06d3b4de1"
@@ -39,11 +39,17 @@
     OPENJDK8_CHKSUM: "f74d949aaaabd6116eaeccc34cc5ff707d3317b2cdbd3a8147920e1851d20cf2"
     MONO_VERSION: "6.12.0.182"
     MONO_CHKSUM: "3e7d4c67a03f4edc542c57d2684c9819"
-    DEPS: "{{ playbook_dir }}/deps"
-    WORK: "{{ playbook_dir }}/work"
-    SRC: "{{ playbook_dir }}/src"
-    IMAGE: "{{ playbook_dir }}/image"
+    ARCH_DIR: "{{ playbook_dir }}/{{ ARCH }}"
+    DEPS_NOARCH: "{{ playbook_dir }}/noarch/deps"
+    DEPS: "{{ ARCH_DIR }}/deps"
+    WORK: "{{ ARCH_DIR }}/work"
+    SRC: "{{ ARCH_DIR }}/src"
+    IMAGE: "{{ ARCH_DIR }}/image"
+
   tasks:
+  - name: Fail if ARCH is undefineds
+    ansible.builtin.fail: msg="FAILED - Please set ARCH to either x86_64 or arm64."
+    when: ARCH is undefined
 
   - name: find OpenJDK short version
     ansible.builtin.shell: echo {{ OPENJDK8_VERSION }} | sed "s|jdk\(.*\)-\(.*\)|\1\2|"
@@ -62,13 +68,13 @@
       sdk_path_var: "{{ sdk_path_reg.stdout }}"
 
   - name: create main directories
-    ansible.builtin.shell: mkdir -p "{{ SRC }}" "{{ WORK }}" "{{ IMAGE }}" "{{ DEPS }}"
+    ansible.builtin.shell: mkdir -p "{{ SRC }}" "{{ WORK }}" "{{ IMAGE }}" "{{ DEPS }}" "{{ DEPS_NOARCH }}"
 
   - name: create work sub-directories
     ansible.builtin.shell: mkdir -p "{{ WORK }}/boost" "{{ WORK }}/cmake" "{{ WORK }}/eigen" \
       "{{ WORK }}/zlib" "{{ WORK }}/bzip2" "{{ WORK }}/freetype" "{{ WORK }}/pcre" \
       "{{ WORK }}/swig" "{{ WORK }}/pkgconfig" "{{ WORK }}/cairo" "{{ WORK }}/mono" \
-      "{{ DEPS }}/openjdk8"
+      "{{ DEPS_NOARCH }}/openjdk8"
 
   - name: does pkg-config exist?
     stat: 
@@ -463,7 +469,7 @@
     - name: configure pixman
       ansible.builtin.shell: CC="clang -fPIC {{ BUILD_TARGET }}" \
         PATH="{{ DEPS }}/bin:$PATH" PKG_CONFIG_PATH="{{ DEPS }}/lib/pkgconfig" \
-        ./configure --enable-shared=no --enable-static=yes --prefix="{{ DEPS }}"
+        ./configure --disable-arm-a64-neon --enable-shared=no --enable-static=yes --prefix="{{ DEPS }}"
       args:
         chdir: "{{ WORK }}/cairo/pixman-{{ PIXMAN_VERSION }}"
 
@@ -515,7 +521,7 @@
 
   - name: does OpenJDK8 exist?
     stat: 
-      path: "{{ DEPS }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home"
+      path: "{{ DEPS_NOARCH }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home"
     register: openjdk8
 
   - name: install OpenJDK8
@@ -529,12 +535,12 @@
             ( >&2 echo "Failed to download OpenJDK8" && exit 1 ); \
         fi
       args:
-        chdir: "{{ DEPS }}/openjdk8"
+        chdir: "{{ DEPS_NOARCH }}/openjdk8"
 
     - name: untar OpenJDK8
       ansible.builtin.shell: tar xzf OpenJDK8U-jdk_x64_mac_hotspot_{{ OPENJDK8_SHORT_VERSION }}.tar.gz
       args:
-        chdir: "{{ DEPS }}/openjdk8"
+        chdir: "{{ DEPS_NOARCH }}/openjdk8"
     when: openjdk8.stat.exists == false
 
   - name: does Mono exist?
@@ -561,7 +567,7 @@
         chdir: "{{ WORK }}/mono"
 
     - name: get build host
-      ansible.builtin.shell: ./config.guess | sed "s|^\([^-]*\)\(-.*\)$|{{ ARCH }}\2|"
+      ansible.builtin.shell: ./config.guess | sed "s|^\([^-]*\)\(-.*\)$|{{ ARCH }}\2|" | sed "s|arm64|aarch64|"
       register: build_host_reg
       args:
         chdir: "{{ WORK }}/mono/mono-{{ MONO_VERSION }}"
@@ -591,7 +597,7 @@
       ansible.builtin.shell: sed -i ".orig" "s|/\* \#undef HAVE_UCONTEXT_H \*/|#define HAVE_UCONTEXT_H 1|" config.h && \
         sed -i ".orig" "s|^\(.*\)\(set (CMAKE_SYSTEM_PROCESSOR \)\(\"\${BTLS_ARCH}\")\)|\1\2\3\n\1set (CMAKE_OSX_ARCHITECTURES \3|" mono/btls/CMakeLists.txt && \
         sed -i ".orig" "s|^\( *#ifdef HAVE_UCONTEXT_H *\)$|\1\n#define _XOPEN_SOURCE 600|" mono/utils/mono-sigcontext.h && \
-        sed -i ".orig" "s|^\( *#ifdef HAVE_UCONTEXT_H *\)$|\1\n#define _XOPEN_SOURCE 600|" mono/mini/exceptions-amd64.c && \
+        sed -i ".orig" "s|^\( *#ifdef HAVE_UCONTEXT_H *\)$|\1\n#define _XOPEN_SOURCE 600|" mono/mini/exceptions-arm64.c && \
         sed -i ".orig" "s|^\( *#if \!defined(__cplusplus) \&\& \!__OBJC2__ *\)$|\1 \&\& !defined(HAVE_OBJ_SUPER_SUPER_CLASS)|" mono/utils/mono-threads-mach-helper.c
       args:
         chdir: "{{ WORK }}/mono/mono-{{ MONO_VERSION }}"
@@ -656,8 +662,8 @@
 
     - name: configure RDKit
       ansible.builtin.shell: rm -f CMakeCache.txt && \
-        JAVA_HOME="{{ DEPS }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home" \
-        PATH="{{ DEPS }}/bin:{{ DEPS }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home/bin:$PATH" \
+        JAVA_HOME="{{ DEPS_NOARCH }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home" \
+        PATH="{{ DEPS }}/bin:{{ DEPS_NOARCH }}/openjdk8/{{ OPENJDK8_VERSION }}/Contents/Home/bin:$PATH" \
         FREETYPE_DIR="{{ DEPS }}" \
         "{{ DEPS }}/bin/cmake" \
           -D RDK_BUILD_INCHI_SUPPORT=ON \
