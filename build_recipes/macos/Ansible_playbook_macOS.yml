@@ -651,7 +651,9 @@
     - name: update Avalon to 2.0.4a
       ansible.builtin.shell: sed -i ".orig" -e "s|set(AVALON_VERSION \"2\.0\.2\")|set(AVALON_VERSION \"2.0.4a\")|" \
         -e "s|set(AVALONTOOLS_MD5SUM \"fc188383a8896802e948c977b73dbe71\")|set(AVALONTOOLS_MD5SUM \"8e0fdedce0d93bdbc1e3c6ab3ae5c6cf\")|" \
-        External/AvalonTools/CMakeLists.txt
+        External/AvalonTools/CMakeLists.txt && \
+        sed -i ".orig" -e "s|\(optBuffer\[optString\.size()\)\( - 1\)\(\] = '\\\\n';\)|\1\3|" \
+        -e "s|\(optBuffer\[optString.size()\)\(\]\)\( = '\\\\0';\)|\1 + 1\2\3|" External/AvalonTools/AvalonTools.cpp
       args:
         chdir: "{{ SRC }}/rdkit-Release_{{ RDKIT_RELEASE }}"
 
