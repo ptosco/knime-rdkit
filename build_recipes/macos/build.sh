@@ -5,7 +5,7 @@ usage()
 cat 1>&2 << EOF
 Usage: cd into arm64 or x86_64 directory, then run
 ../build.sh [--clean]
-Pass --clean if to do a clean build starting from scratch.
+Pass --clean to do a clean build starting from scratch.
 
 EOF
 exit
